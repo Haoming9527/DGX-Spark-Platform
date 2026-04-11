@@ -1,0 +1,73 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+:root {
+  --background: #f9fafb;
+  --foreground: #111827;
+  --border: #e5e7eb;
+  --panel: #ffffff;
+  --panel-hover: #f3f4f6;
+
+  --nvidia-green: #76b900;
+  --nvidia-green-light: #8ce100;
+  --nvidia-green-dark: #5a8d00;
+  
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --border: #262626;
+    --panel: #171717;
+    --panel-hover: #262626;
+  }
+}
+
+@theme inline {
+  --color-nvidia-green: var(--nvidia-green);
+  --color-nvidia-green-light: var(--nvidia-green-light);
+  --color-nvidia-green-dark: var(--nvidia-green-dark);
+  
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-border: var(--border);
+
+  --color-panel: var(--panel);
+  --color-panel-hover: var(--panel-hover);
+  
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  margin: 0;
+  padding: 0;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
+}
+
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-thumb:hover {
+    background: #404040;
+  }
+}

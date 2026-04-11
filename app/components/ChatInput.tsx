@@ -1,0 +1,221 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { Send, StopCircle, BrainCircuit, Mic, MicOff } from "lucide-react";
+
+interface ChatInputProps {
+  input: string;
+  setInput: (val: string | ((prev: string) => string)) => void;
+  isLoading: boolean;
+  selectedModel: string;
+  handleSubmit: (e: React.FormEvent) => void;
+  stopGeneration: () => void;
+  useReasoning: boolean;
+  setUseReasoning: (val: boolean) => void;
+}
+
+export function ChatInput({
+  input,
+  setInput,
+  isLoading,
+  selectedModel,
+  handleSubmit,
+  stopGeneration,
+  useReasoning,
+  setUseReasoning,
+}: ChatInputProps) {
+  const [isListening, setIsListening] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition = (window as { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition || 
+                                (window as { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true; // Enabled for "live" feel
+        recognition.lang = "en-US";
+
+        recognition.onresult = (event: SpeechRecognitionEvent) => {
+          let final = "";
+          let interim = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              final += event.results[i][0].transcript;
+            } else {
+              interim += event.results[i][0].transcript;
+            }
+          }
+          
+          if (final) {
+            setInput((prev) => {
+               const separator = prev.length > 0 && !prev.endsWith(" ") ? " " : "";
+               return prev + separator + final.trim() + " ";
+            });
+            setInterimTranscript("");
+          } else {
+            setInterimTranscript(interim);
+          }
+        };
+
+        recognition.onend = () => {
+          setIsListening(false);
+          setInterimTranscript("");
+        };
+
+        recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+          if (event.error === "no-speech") {
+            // "no-speech" is a common timeout when the user doesn't say anything. 
+            // We'll just reset without logging a scary error.
+            setIsListening(false);
+            setInterimTranscript("");
+            return;
+          }
+          console.error("Speech recognition error:", event.error);
+          setIsListening(false);
+          setInterimTranscript("");
+        };
+
+        recognitionRef.current = recognition;
+      }
+    }
+    
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, [setInput]);
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      alert("Speech recognition is not supported in this browser.");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      try {
+        setInterimTranscript("");
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (err: unknown) {
+        console.error("Failed to start speech recognition:", err instanceof Error ? err.message : String(err));
+      }
+    }
+  };
+
+  return (
+    <footer className="flex-none p-4 w-full max-w-4xl mx-auto absolute bottom-0 left-1/2 -translate-x-1/2 bg-gradient-to-t from-background via-background/80 to-transparent pt-10 pointer-events-none">
+      <div className="flex flex-col gap-2 pointer-events-auto">
+        <form
+          onSubmit={handleSubmit}
+          className="relative flex flex-col gap-2 bg-panel border border-border p-2 rounded-2xl shadow-lg focus-within:ring-1 focus-within:ring-nvidia-green/50 transition-all font-sans"
+        >
+          <textarea
+            value={input + (interimTranscript ? (input.endsWith(" ") ? "" : " ") + interimTranscript : "")}
+            onChange={(e) => {
+              if (!isListening) {
+                setInput(e.target.value);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
+            placeholder={isListening ? "Listening..." : "Send a message to DGX Spark..."}
+            className={`w-full max-h-48 min-h-[52px] bg-transparent resize-none outline-none text-foreground py-2 px-3 ${isListening ? "text-nvidia-green/80" : ""}`}
+            rows={1}
+            readOnly={isListening}
+          />
+          
+          <div className="flex items-center justify-between pb-1 px-1">
+            <div className="flex items-center gap-1.5 font-sans">
+
+              
+              <button
+                type="button"
+                onClick={() => setUseReasoning(!useReasoning)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
+                  useReasoning 
+                  ? "bg-purple-500/10 text-purple-400 border-purple-500/30" 
+                  : "bg-background text-foreground/50 border-border hover:bg-panel-hover"
+                }`}
+                title="Toggle Reasoning Mode"
+              >
+                <BrainCircuit className="w-3.5 h-3.5" />
+                Thinking
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleListening}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border relative ${
+                  isListening 
+                  ? "bg-red-500/10 text-red-500 border-red-500/30" 
+                  : "bg-background text-foreground/50 border-border hover:bg-panel-hover"
+                }`}
+                title={isListening ? "Stop Recording" : "Voice Input"}
+              >
+                {isListening ? (
+                  <>
+                    <MicOff className="w-3.5 h-3.5" />
+                    Recording...
+                    <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                       <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Mic className="w-3.5 h-3.5" />
+                    Voice
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {isLoading ? (
+                <button
+                  type="button"
+                  onClick={stopGeneration}
+                  className="p-2.5 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+                  title="Stop generation"
+                >
+                  <StopCircle className="w-5 h-5" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim() || isLoading || !selectedModel}
+                  className="p-2.5 rounded-xl bg-nvidia-green text-background hover:bg-nvidia-green-light disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-[0_0_15px_rgba(118,185,0,0.3)]"
+                  title="Send Message"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </form>
+        <div className="text-center text-xs text-foreground/40 pb-2 opacity-70 hover:opacity-100 transition-all duration-300">
+           LLMs running on private Nvidia DGX Spark with zero data collection
+           <span className="mx-2 text-foreground/20">•</span>
+           <a 
+             href="https://github.com/Haoming9527/DGX-Spark-Platform" 
+             target="_blank" 
+             rel="noopener noreferrer"
+             className="hover:text-nvidia-green transition-colors underline decoration-foreground/20 underline-offset-2"
+           >
+             View Git Repo
+           </a>
+        </div>
+      </div>
+    </footer>
+  );
+}
