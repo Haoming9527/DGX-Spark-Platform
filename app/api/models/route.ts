@@ -5,13 +5,13 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const apiKey = process.env["X-API-KEY"];
+    const apiKey = process.env["X_API_KEY"];
     const endpoint = process.env["API_ENDPOINT"];
 
     const response = await fetch(`${endpoint}/api/tags`, {
       method: "GET",
       headers: {
-        "X-API-KEY": apiKey || "",
+        "X_API_KEY": apiKey || "",
       },
       // Short timeout to detect offline status quickly
       signal: AbortSignal.timeout(5000), 

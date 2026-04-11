@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   try {
     const { messages, model, useReasoning } = await req.json();
 
-    const apiKey = process.env["X-API-KEY"];
+    const apiKey = process.env["X_API_KEY"];
     const endpoint = process.env["API_ENDPOINT"];
 
     const BASE_SYSTEM_PROMPT = {
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-API-KEY": apiKey || "",
+        "X_API_KEY": apiKey || "",
       },
       body: JSON.stringify({
         model: model || "llama3.1:8b",

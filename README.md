@@ -43,6 +43,7 @@ graph LR
 - **Animations**: [Framer Motion](https://www.framer.com/motion/)
 - **Icons**: [Lucide React](https://lucide.dev/)
 - **Markdown**: [React-Markdown](https://github.com/remarkjs/react-markdown) + [Remark-GFM](https://github.com/remarkjs/remark-gfm)
+- **Markdown**: [React-Markdown](https://github.com/remarkjs/react-markdown) + [Remark-GFM](https://github.com/remarkjs/react-gfm)
 - **Code Highlighting**: [React-Syntax-Highlighter](https://github.com/react-syntax-highlighter/react-syntax-highlighter) (Prism)
 - **Backend API**: [Ollama](https://ollama.com/) (Private Instance)
 - **Deployment**: [Cloudflare Tunnels](https://www.cloudflare.com/products/tunnel/) for secure remote access to local hardware.
