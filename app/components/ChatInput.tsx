@@ -3,6 +3,28 @@
 import { useState, useEffect, useRef } from "react";
 import { Send, StopCircle, BrainCircuit, Mic, MicOff } from "lucide-react";
 
+interface SpeechRecognitionEvent extends Event {
+  readonly resultIndex: number;
+  readonly results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  readonly error: string;
+  readonly message: string;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onend: () => void;
+  onerror: (event: SpeechRecognitionErrorEvent) => void;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
+
 interface ChatInputProps {
   input: string;
   setInput: (val: string | ((prev: string) => string)) => void;
@@ -12,6 +34,11 @@ interface ChatInputProps {
   stopGeneration: () => void;
   useReasoning: boolean;
   setUseReasoning: (val: boolean) => void;
+}
+
+interface CustomWindow extends Window {
+  SpeechRecognition?: new () => SpeechRecognition;
+  webkitSpeechRecognition?: new () => SpeechRecognition;
 }
 
 export function ChatInput({
@@ -30,8 +57,9 @@ export function ChatInput({
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const SpeechRecognition = (window as { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition || 
-                                (window as { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+      const win = window as unknown as CustomWindow;
+      const SpeechRecognition = win.SpeechRecognition || win.webkitSpeechRecognition;
+      
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
