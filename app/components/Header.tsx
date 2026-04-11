@@ -25,12 +25,12 @@ export function Header({
   clearChat,
 }: HeaderProps) {
   return (
-    <header className="flex-none p-4 md:px-8 border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-10 flex items-center justify-between">
+    <header className="flex-none px-4 py-3 md:px-8 border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-[100] flex items-center justify-between">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-nvidia-green/10 flex items-center justify-center border border-nvidia-green/20 shadow-[0_0_15px_rgba(118,185,0,0.15)] overflow-hidden p-1">
           <Image src="/logo.svg" alt="DGX Spark Logo" width={40} height={40} className="w-full h-full object-contain" priority />
         </div>
-        <h1 className="text-xl font-bold tracking-tight hidden sm:block">
+        <h1 className="text-lg sm:text-xl font-bold tracking-tight">
           DGX Spark<span className="text-nvidia-green"> Platform</span>
         </h1>
       </div>

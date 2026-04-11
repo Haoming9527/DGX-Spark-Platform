@@ -17,19 +17,19 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     <motion.div
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`flex gap-4 sm:gap-6 w-full ${
+      className={`flex gap-3 sm:gap-6 w-full ${
         message.role === "user" ? "flex-row-reverse" : "flex-row"
       }`}
     >
       {/* Avatar */}
-      <div className="flex-none w-10">
+      <div className="flex-none w-8 sm:w-10">
         {message.role === "assistant" ? (
-          <div className="w-10 h-10 rounded-full bg-nvidia-green/10 flex items-center justify-center border border-nvidia-green/30 text-nvidia-green shadow-[0_0_10px_rgba(118,185,0,0.1)]">
-            <Bot className="w-6 h-6" />
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-nvidia-green/10 flex items-center justify-center border border-nvidia-green/30 text-nvidia-green shadow-[0_0_10px_rgba(118,185,0,0.15)]">
+            <Bot className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
         ) : (
-          <div className="w-10 h-10 rounded-full bg-panel flex items-center justify-center border border-border">
-            <User className="w-6 h-6 text-foreground/40" />
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-panel flex items-center justify-center border border-border">
+            <User className="w-5 h-5 sm:w-6 sm:h-6 text-foreground/40" />
           </div>
         )}
       </div>
@@ -52,7 +52,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
         {/* Main Bubble */}
         <div
-          className={`w-full max-w-full px-5 py-4 overflow-x-auto rounded-2xl border ${
+          className={`w-full max-w-full px-4 py-2.5 overflow-x-auto rounded-2xl border ${
             message.role === "user"
               ? "bg-nvidia-green/10 border-nvidia-green/20 text-foreground rounded-tr-sm"
               : "bg-panel border-border text-foreground rounded-tl-sm shadow-sm"

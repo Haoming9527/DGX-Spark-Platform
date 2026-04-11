@@ -130,6 +130,7 @@ export function ChatInterface() {
       
       let done = false;
       let streamedContent = "";
+      let lineBuffer = "";
 
       while (!done) {
         const { value, done: readerDone } = await reader.read();
@@ -137,11 +138,17 @@ export function ChatInterface() {
 
         if (value) {
           const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n").filter((line) => line.trim() !== "");
+          lineBuffer += chunk;
+          
+          const lines = lineBuffer.split("\n");
+          lineBuffer = lines.pop() || ""; // Store the partial line for the next chunk
 
           for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) continue;
+
             try {
-              const data = JSON.parse(line);
+              const data = JSON.parse(trimmedLine);
 
               if (data.message && data.message.content) {
                 streamedContent += data.message.content;
@@ -183,10 +190,22 @@ export function ChatInterface() {
                  );
               }
 
-            } catch {
-              console.warn("Failed to parse chunk:", line);
+            } catch (err) {
+              console.warn("Failed to parse chunk:", trimmedLine, err);
             }
           }
+        }
+      }
+
+      // Final check for any leftover data in lineBuffer (unlikely but safe)
+      if (lineBuffer.trim()) {
+        try {
+          const data = JSON.parse(lineBuffer.trim());
+          if (data.message && data.message.content) {
+            // ... apply final update if needed ...
+          }
+        } catch {
+          // Ignore partial trailing data
         }
       }
     } catch (error: unknown) {
@@ -223,7 +242,7 @@ export function ChatInterface() {
       />
 
       {/* Main Chat Area */}
-      <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 scroll-smooth">
+      <main className="flex-1 overflow-y-auto px-3 sm:px-4 md:px-8 py-4 sm:py-6 scroll-smooth">
         <div className="max-w-4xl mx-auto flex flex-col gap-8 pb-20">
           {messages.length === 0 ? (
             <motion.div 
