@@ -38,7 +38,7 @@ export function Header({
       <div className="flex items-center gap-4">
         <button
           onClick={clearChat}
-          className="p-2 text-foreground/40 hover:text-foreground transition-colors"
+          className="flex items-center justify-center w-10 h-10 bg-panel border border-border rounded-lg text-foreground hover:text-nvidia-green hover:border-nvidia-green/50 transition-all shadow-sm"
           title="Clear Chat"
         >
           <RefreshCw className="w-5 h-5" />

@@ -137,7 +137,7 @@ export function ChatInput({
   };
 
   return (
-    <footer className="flex-none p-4 w-full max-w-4xl mx-auto absolute bottom-0 left-1/2 -translate-x-1/2 bg-gradient-to-t from-background via-background/80 to-transparent pt-10 pointer-events-none">
+    <footer className="p-2 sm:p-4 w-full max-w-4xl mx-auto absolute bottom-0 left-1/2 -translate-x-1/2 bg-gradient-to-t from-background via-background/80 to-transparent pt-10 pointer-events-none">
       <div className="flex flex-col gap-2 pointer-events-auto">
         <form
           onSubmit={handleSubmit}

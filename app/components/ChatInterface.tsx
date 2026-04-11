@@ -229,7 +229,7 @@ export function ChatInterface() {
   };
 
   return (
-    <div className="flex flex-col h-screen max-h-screen bg-background text-foreground overflow-hidden font-sans">
+    <div className="flex flex-col h-dvh max-h-dvh bg-background text-foreground overflow-hidden font-sans">
       
       <Header 
         models={models}
