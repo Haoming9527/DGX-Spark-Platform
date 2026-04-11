@@ -31,7 +31,7 @@ graph LR
 ```
 
 1.  **Cloudflare Tunnel**: Securely exposes the local environment.
-2.  **Caddy Reverse Proxy**: Handles incoming HTTP requests, performs strict **X-API-KEY** header verification, and routes traffic.
+2.  **Caddy Reverse Proxy**: Handles incoming HTTP requests, performs strict **X_API_KEY** header verification, and routes traffic.
 3.  **Local Isolation**: The Ollama instance and DGX hardware remain isolated from direct public access, ensuring maximum security.
 
 ---
