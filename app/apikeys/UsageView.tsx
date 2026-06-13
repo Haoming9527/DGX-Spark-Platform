@@ -44,7 +44,10 @@ export function UsageView({ keys, keysLoading }: UsageViewProps) {
       return;
     }
 
-    setChartLoading(true);
+    const timer = setTimeout(() => {
+      setChartLoading(true);
+    }, 0);
+
     fetch(`/api/apikeys/usage?id=${selectedKey.id}&days=${timeRange}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load usage data.");
@@ -60,6 +63,8 @@ export function UsageView({ keys, keysLoading }: UsageViewProps) {
       .finally(() => {
         setChartLoading(false);
       });
+
+    return () => clearTimeout(timer);
   }, [selectedKey, timeRange]);
 
   if (selectedKey) {
