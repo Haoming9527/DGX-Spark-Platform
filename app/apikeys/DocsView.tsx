@@ -15,7 +15,7 @@ export function DocsView() {
       .then((r) => r.json())
       .then((data) => {
         if (data.models && Array.isArray(data.models)) {
-          setModels(data.models.map((m: any) => m.name));
+          setModels(data.models.map((m: { name: string }) => m.name));
         } else if (data.error === "OFFLINE") {
           setModelsError(data.message || "DGX Spark is unreachable.");
         } else {

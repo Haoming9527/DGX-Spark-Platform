@@ -28,8 +28,8 @@ export interface UserSession {
 
 export function verifyToken(token: string): UserSession | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET!) as any;
-    if (decoded && decoded.userId && decoded.username && decoded.email) {
+    const decoded = jwt.verify(token, JWT_SECRET!) as { userId?: string; username?: string; email?: string } | string;
+    if (decoded && typeof decoded !== "string" && decoded.userId && decoded.username && decoded.email) {
       return {
         userId: decoded.userId,
         username: decoded.username,

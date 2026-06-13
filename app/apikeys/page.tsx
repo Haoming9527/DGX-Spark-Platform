@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import {
-  Key, Trash2, ArrowLeft, Zap, Loader2,
-  BarChart3, BookOpen, Clock, TriangleAlert, X
+  Key, ArrowLeft, Loader2, BarChart3, BookOpen
 } from "lucide-react";
 
 import { KeysView } from "./KeysView";
@@ -202,14 +201,16 @@ export default function ApiKeysPage() {
         
         {/* Sidebar Nav */}
         <nav className="w-full md:w-64 border-b md:border-b-0 md:border-r border-border bg-panel/30 p-4 shrink-0 flex flex-row md:flex-col gap-1.5 md:gap-2 overflow-x-auto md:overflow-x-visible md:overflow-y-auto custom-scrollbar md:sticky md:top-[69px] md:h-[calc(100vh-69px)]">
-          {[
-            { id: "keys", label: "API Keys", icon: Key },
-            { id: "usage", label: "Token Usage", icon: BarChart3 },
-            { id: "docs", label: "Documentation", icon: BookOpen },
-          ].map((tab) => (
+          {(
+            [
+              { id: "keys", label: "API Keys", icon: Key },
+              { id: "usage", label: "Token Usage", icon: BarChart3 },
+              { id: "docs", label: "Documentation", icon: BookOpen },
+            ] as const
+          ).map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                 activeTab === tab.id
                   ? "bg-nvidia-green/10 text-nvidia-green border border-nvidia-green/15"
@@ -249,10 +250,7 @@ export default function ApiKeysPage() {
                 createdRawKey={createdRawKey}
                 handleCopy={handleCopy}
                 copied={copied}
-                confirmTarget={confirmTarget}
                 setConfirmTarget={setConfirmTarget}
-                handleDelete={handleDelete}
-                deletingId={deletingId}
                 error={error}
                 onRenameKey={handleRename}
               />

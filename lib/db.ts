@@ -9,5 +9,5 @@ if (!connectionString) {
 export const pool = new Pool({ connectionString });
 
 export async function query(text: string, params?: unknown[]) {
-  return pool.query(text, params as any);
+  return pool.query(text, params);
 }

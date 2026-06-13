@@ -65,7 +65,19 @@ export async function GET(req: NextRequest) {
       [keyId, days]
     );
 
-    const chartData = result.rows.map((row: any) => {
+    interface DbUsageRow {
+      usage_date: string;
+      tokens: number;
+      prompt_tokens: number;
+      completion_tokens: number;
+      requests: number;
+      success_requests: number;
+      error_400: number;
+      error_403: number;
+      error_404: number;
+    }
+
+    const chartData = result.rows.map((row: DbUsageRow) => {
       const dateObj = new Date(row.usage_date);
       const dateStr = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
       const requests = row.requests;

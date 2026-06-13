@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
 }
 
 // DELETE: Log out — clears the JWT cookie
-export async function DELETE(_req: NextRequest) {
+export async function DELETE() {
   const response = NextResponse.json({ message: "Logout successful" });
   response.cookies.set("token", "", {
     httpOnly: true,

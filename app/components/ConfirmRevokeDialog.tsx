@@ -48,7 +48,7 @@ export function ConfirmRevokeDialog({
         <div className="p-5 space-y-4">
           <p className="text-sm text-foreground/70">
             You are about to permanently revoke{" "}
-            <span className="font-semibold text-foreground">"{keyName}"</span>.
+            <span className="font-semibold text-foreground">&quot;{keyName}&quot;</span>.
             Any application using this key will immediately lose access.
           </p>
 

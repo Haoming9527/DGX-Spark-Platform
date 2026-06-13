@@ -8,8 +8,13 @@ function hashKey(rawKey: string): string {
   return crypto.createHash("sha256").update(rawKey).digest("hex");
 }
 
+interface ApiKeyRow {
+  id: string;
+  user_id: string;
+}
+
 export async function POST(req: NextRequest) {
-  let keyRow: any = null;
+  let keyRow: ApiKeyRow | null = null;
 
   // Log detailed usage in api_key_usage table and update aggregate fields
   function logApiUsage(statusCode: number, tokens = 0, promptTokens = 0, completionTokens = 0) {

@@ -232,7 +232,7 @@ export function ChatInput({
           </div>
         </form>
         <div className="text-center text-xs text-foreground/40 pb-2 opacity-70 hover:opacity-100 transition-all duration-300">
-           <span className="text-nvidia-green font-semibold">Chat won't be saved</span>
+           <span className="text-nvidia-green font-semibold">Chat won&apos;t be saved</span>
            <span className="mx-2 text-foreground/20">•</span>
            LLMs running on private Nvidia DGX Spark
            <span className="mx-2 text-foreground/20">•</span>

@@ -26,10 +26,7 @@ interface KeysViewProps {
   createdRawKey: string | null;
   handleCopy: (text: string) => void;
   copied: boolean;
-  confirmTarget: { id: string; name: string } | null;
   setConfirmTarget: (target: { id: string; name: string } | null) => void;
-  handleDelete: () => Promise<void>;
-  deletingId: string | null;
   error: string | null;
   onRenameKey: (id: string, name: string) => Promise<void>;
 }
@@ -44,10 +41,7 @@ export function KeysView({
   createdRawKey,
   handleCopy,
   copied,
-  confirmTarget,
   setConfirmTarget,
-  handleDelete,
-  deletingId,
   error,
   onRenameKey,
 }: KeysViewProps) {
@@ -61,7 +55,7 @@ export function KeysView({
     try {
       await onRenameKey(id, editingName);
       setEditingId(null);
-    } catch (err) {
+    } catch {
       // Parent handleRename sets the error banner automatically
     } finally {
       setRenaming(false);

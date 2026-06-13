@@ -61,21 +61,13 @@ export function UsageOverview({ keys, keysLoading, onKeyClick }: UsageOverviewPr
     return keysWithTimeframeUsage.reduce((s, k) => s + k.requests, 0);
   }, [keysWithTimeframeUsage]);
 
-  // Scaling limits for comparative bar charts
-  const maxVal = useMemo(() => {
-    return keysWithTimeframeUsage.reduce((m, k) => {
-      const val = metric === "tokens" ? k.tokens : k.requests;
-      return val > m ? val : m;
-    }, 0) || 1;
-  }, [keysWithTimeframeUsage, metric]);
-
   return (
     <div className="space-y-6">
       {/* Timeframe Selector Dropdown */}
       <div className="flex justify-end">
         <select
           value={timeframe}
-          onChange={(e) => setTimeframe(e.target.value as any)}
+          onChange={(e) => setTimeframe(e.target.value as "1h" | "24h" | "7d" | "30d")}
           className="bg-background border border-border/60 hover:border-nvidia-green/40 rounded-lg px-3.5 py-2 text-xs font-semibold text-foreground/80 outline-none transition-all cursor-pointer focus:border-nvidia-green/50 focus:ring-1 focus:ring-nvidia-green/20"
         >
           <option value="1h">Past 1 hour</option>

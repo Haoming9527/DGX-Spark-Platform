@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { UsageOverview } from "../components/UsageOverview";
 import { UsageDetails } from "../components/UsageDetails";
 
@@ -41,7 +41,6 @@ export function UsageView({ keys, keysLoading }: UsageViewProps) {
 
   useEffect(() => {
     if (!selectedKey) {
-      setChartData([]);
       return;
     }
 
