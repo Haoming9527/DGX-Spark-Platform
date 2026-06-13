@@ -9,6 +9,39 @@ function hashKey(rawKey: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  let keyRow: any = null;
+
+  // Log detailed usage in api_key_usage table and update aggregate fields
+  function logApiUsage(statusCode: number, tokens = 0, promptTokens = 0, completionTokens = 0) {
+    if (!keyRow?.id) return;
+    (async () => {
+      if (statusCode >= 200 && statusCode < 300) {
+        await query(
+          `UPDATE api_keys
+           SET last_used_at = CURRENT_TIMESTAMP,
+               total_requests = total_requests + 1,
+               total_tokens   = total_tokens   + $1
+           WHERE id = $2`,
+          [tokens, keyRow.id]
+        );
+      } else {
+        await query(
+          `UPDATE api_keys
+           SET last_used_at = CURRENT_TIMESTAMP,
+               total_requests = total_requests + 1
+           WHERE id = $2`,
+          [keyRow.id]
+        );
+      }
+
+      await query(
+        `INSERT INTO api_key_usage (key_id, tokens, prompt_tokens, completion_tokens, status_code)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [keyRow.id, tokens, promptTokens, completionTokens, statusCode]
+      );
+    })().catch((err) => console.error("Failed to log API usage:", err));
+  }
+
   try {
     const authHeader = req.headers.get("authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -40,37 +73,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const keyRow = dbResult.rows[0];
-
-    // Log detailed usage in api_key_usage table and update aggregate fields
-    function logApiUsage(statusCode: number, tokens = 0, promptTokens = 0, completionTokens = 0) {
-      (async () => {
-        if (statusCode >= 200 && statusCode < 300) {
-          await query(
-            `UPDATE api_keys
-             SET last_used_at = CURRENT_TIMESTAMP,
-                 total_requests = total_requests + 1,
-                 total_tokens   = total_tokens   + $1
-             WHERE id = $2`,
-            [tokens, keyRow.id]
-          );
-        } else {
-          await query(
-            `UPDATE api_keys
-             SET last_used_at = CURRENT_TIMESTAMP,
-                 total_requests = total_requests + 1
-             WHERE id = $2`,
-            [keyRow.id]
-          );
-        }
-
-        await query(
-          `INSERT INTO api_key_usage (key_id, tokens, prompt_tokens, completion_tokens, status_code)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [keyRow.id, tokens, promptTokens, completionTokens, statusCode]
-        );
-      })().catch((err) => console.error("Failed to log API usage:", err));
-    }
+    keyRow = dbResult.rows[0];
 
     // 2. Parse payload
     const body = await req.json();
