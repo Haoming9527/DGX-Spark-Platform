@@ -16,35 +16,25 @@ interface ApiKeyRow {
 export async function POST(req: NextRequest) {
   let keyRow: ApiKeyRow | null = null;
 
-  // Log detailed usage in api_key_usage table and update aggregate fields
-  function logApiUsage(statusCode: number, tokens = 0, promptTokens = 0, completionTokens = 0) {
+  // Log detailed usage in api_key_usage table.
+  async function logApiUsage(statusCode: number, tokens = 0, promptTokens = 0, completionTokens = 0) {
     if (!keyRow?.id) return;
-    (async () => {
-      if (statusCode >= 200 && statusCode < 300) {
-        await query(
-          `UPDATE api_keys
-           SET last_used_at = CURRENT_TIMESTAMP,
-               total_requests = total_requests + 1,
-               total_tokens   = total_tokens   + $1
-           WHERE id = $2`,
-          [tokens, keyRow.id]
-        );
-      } else {
-        await query(
-          `UPDATE api_keys
-           SET last_used_at = CURRENT_TIMESTAMP,
-               total_requests = total_requests + 1
-           WHERE id = $2`,
-          [keyRow.id]
-        );
-      }
+    try {
+      await query(
+        `UPDATE api_keys
+         SET last_used_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [keyRow.id]
+      );
 
       await query(
         `INSERT INTO api_key_usage (key_id, tokens, prompt_tokens, completion_tokens, status_code)
          VALUES ($1, $2, $3, $4, $5)`,
         [keyRow.id, tokens, promptTokens, completionTokens, statusCode]
       );
-    })().catch((err) => console.error("Failed to log API usage:", err));
+    } catch (err) {
+      console.error("Failed to log API usage:", err);
+    }
   }
 
   try {
@@ -85,7 +75,7 @@ export async function POST(req: NextRequest) {
     const { model, messages, stream } = body;
 
     if (!messages || !Array.isArray(messages)) {
-      logApiUsage(400);
+      await logApiUsage(400);
       return NextResponse.json(
         { error: { message: "messages is required and must be an array.", type: "invalid_request_error", code: null } },
         { status: 400 }
@@ -94,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     // FIX: Limit message count and content size to prevent upstream abuse.
     if (messages.length > 200) {
-      logApiUsage(400);
+      await logApiUsage(400);
       return NextResponse.json(
         { error: { message: "Too many messages. Maximum is 200.", type: "invalid_request_error", code: null } },
         { status: 400 }
@@ -102,7 +92,7 @@ export async function POST(req: NextRequest) {
     }
     for (const msg of messages) {
       if (typeof msg.content === "string" && msg.content.length > 100_000) {
-        logApiUsage(400);
+        await logApiUsage(400);
         return NextResponse.json(
           { error: { message: "A message content exceeds the 100,000 character limit.", type: "invalid_request_error", code: null } },
           { status: 400 }
@@ -114,7 +104,7 @@ export async function POST(req: NextRequest) {
     const xApiKey = process.env.X_API_KEY;
 
     if (!endpoint) {
-      logApiUsage(500);
+      await logApiUsage(500);
       return NextResponse.json(
         { error: { message: "Upstream API_ENDPOINT is not configured.", type: "server_error", code: null } },
         { status: 500 }
@@ -137,7 +127,7 @@ export async function POST(req: NextRequest) {
 
     if (!upstreamResponse.ok) {
       const status = upstreamResponse.status;
-      logApiUsage(status);
+      await logApiUsage(status);
       if (status === 530 || status === 503 || status === 502) {
         return NextResponse.json(
           { error: { message: "DGX Spark is currently offline.", type: "server_error", code: "offline" } },
@@ -159,7 +149,7 @@ export async function POST(req: NextRequest) {
 
       const reader = upstreamResponse.body?.getReader();
       if (!reader) {
-        logApiUsage(500);
+        await logApiUsage(500);
         return NextResponse.json({ error: "Failed to read upstream stream" }, { status: 500 });
       }
 
@@ -176,7 +166,7 @@ export async function POST(req: NextRequest) {
             while (true) {
               const { done, value } = await reader.read();
               if (done) {
-                logApiUsage(200, totalTokens, promptTokens, completionTokens);
+                await logApiUsage(200, totalTokens, promptTokens, completionTokens);
                 controller.enqueue(encoder.encode("data: [DONE]\n\n"));
                 controller.close();
                 break;
@@ -224,7 +214,7 @@ export async function POST(req: NextRequest) {
               }
             }
           } catch (err) {
-            logApiUsage(500);
+            await logApiUsage(500);
             controller.error(err);
           }
         },
@@ -271,14 +261,14 @@ export async function POST(req: NextRequest) {
     const promptTokens = data.prompt_eval_count || 0;
     const completionTokens = data.eval_count || 0;
     const totalTokens = promptTokens + completionTokens;
-    logApiUsage(200, totalTokens, promptTokens, completionTokens);
+    await logApiUsage(200, totalTokens, promptTokens, completionTokens);
 
     return NextResponse.json(responseBody);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal server error";
     console.error("OpenAI Endpoint error:", error);
     if (keyRow?.id) {
-      logApiUsage(500);
+      await logApiUsage(500);
     }
     return NextResponse.json(
       { error: { message: msg, type: "api_error", code: null } },

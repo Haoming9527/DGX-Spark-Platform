@@ -5,6 +5,7 @@ import {
   Key, Plus, Trash2, Copy, Check, Clock, Loader2,
   AlertTriangle, Shield, Edit2, X
 } from "lucide-react";
+import { formatCompactNumber } from "../../lib/formatNumber";
 
 interface ApiKey {
   id: string;
@@ -213,10 +214,10 @@ export function KeysView({
                     </code>
                   </div>
                   <div className="text-sm text-foreground/60 tabular-nums">
-                    {key.total_requests.toLocaleString()}
+                    {formatCompactNumber(key.total_requests)}
                   </div>
                   <div className="text-sm text-foreground/60 tabular-nums">
-                    {key.total_tokens.toLocaleString()}
+                    {formatCompactNumber(key.total_tokens)}
                   </div>
                   <div className="text-xs text-foreground/40 flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 shrink-0" />

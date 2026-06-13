@@ -21,10 +21,19 @@ export async function GET(req: NextRequest) {
     }
 
     const result = await query(
-      `SELECT id, name, key_prefix, created_at, last_used_at, total_tokens, total_requests
-       FROM api_keys
-       WHERE user_id = $1
-       ORDER BY created_at DESC`,
+      `SELECT
+          k.id,
+          k.name,
+          k.key_prefix,
+          k.created_at,
+          k.last_used_at,
+          COALESCE(SUM(u.tokens), 0)::float8 AS total_tokens,
+          COALESCE(COUNT(u.id), 0)::int AS total_requests
+       FROM api_keys k
+       LEFT JOIN api_key_usage u ON u.key_id = k.id
+       WHERE k.user_id = $1
+       GROUP BY k.id
+       ORDER BY k.created_at DESC`,
       [session.userId]
     );
 
@@ -76,7 +85,7 @@ export async function POST(req: NextRequest) {
     const result = await query(
       `INSERT INTO api_keys (user_id, key_hash, key_prefix, name)
        VALUES ($1, $2, $3, $4)
-       RETURNING id, name, key_prefix, created_at, total_tokens, total_requests`,
+       RETURNING id, name, key_prefix, created_at, last_used_at`,
       [session.userId, keyHash, keyPrefix, safeName]
     );
 
@@ -84,7 +93,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       message: "API Key created. Copy it now — it will not be shown again.",
       rawKey,
-      key: result.rows[0],
+      key: {
+        ...result.rows[0],
+        total_tokens: 0,
+        total_requests: 0,
+      },
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal server error";

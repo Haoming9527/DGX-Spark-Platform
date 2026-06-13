@@ -18,9 +18,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     key_prefix VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    last_used_at TIMESTAMPTZ,
-    total_tokens INT DEFAULT 0 NOT NULL,
-    total_requests INT DEFAULT 0 NOT NULL
+    last_used_at TIMESTAMPTZ
 );
 
 -- Index for fast lookup by key hash
@@ -31,11 +29,21 @@ CREATE TABLE IF NOT EXISTS api_key_usage (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     key_id UUID NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
     timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    tokens INT DEFAULT 0 NOT NULL,
-    prompt_tokens INT DEFAULT 0 NOT NULL,
-    completion_tokens INT DEFAULT 0 NOT NULL,
+    tokens BIGINT DEFAULT 0 NOT NULL,
+    prompt_tokens BIGINT DEFAULT 0 NOT NULL,
+    completion_tokens BIGINT DEFAULT 0 NOT NULL,
     status_code INT NOT NULL
 );
 
 -- Index for fast daily aggregation and lookup by key
 CREATE INDEX IF NOT EXISTS idx_api_key_usage_key_timestamp ON api_key_usage(key_id, timestamp DESC);
+
+-- Existing database migration helpers
+ALTER TABLE api_key_usage
+    ALTER COLUMN tokens TYPE BIGINT,
+    ALTER COLUMN prompt_tokens TYPE BIGINT,
+    ALTER COLUMN completion_tokens TYPE BIGINT;
+
+ALTER TABLE api_keys
+    DROP COLUMN IF EXISTS total_tokens,
+    DROP COLUMN IF EXISTS total_requests;

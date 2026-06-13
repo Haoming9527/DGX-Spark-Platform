@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { ArrowLeft, Info, Loader2 } from "lucide-react";
+import { formatCompactNumber } from "../../lib/formatNumber";
 
 interface ApiKey {
   id: string;
@@ -200,11 +201,11 @@ export function UsageDetails({
           <div className="text-right shrink-0">
             <div className="text-[10px] uppercase font-bold text-foreground/30 tracking-wider">Metrics Sum</div>
             <div className="text-base font-bold text-foreground tabular-nums">
-              {selectedKey.total_requests.toLocaleString()}{" "}
+              <span title={selectedKey.total_requests.toLocaleString()}>{formatCompactNumber(selectedKey.total_requests)}</span>{" "}
               <span className="text-xs font-normal text-foreground/40">requests</span>
             </div>
             <div className="text-xs text-nvidia-green font-bold tabular-nums">
-              {selectedKey.total_tokens.toLocaleString()}{" "}
+              <span title={selectedKey.total_tokens.toLocaleString()}>{formatCompactNumber(selectedKey.total_tokens)}</span>{" "}
               <span className="text-[10px] font-normal text-foreground/40">tokens</span>
             </div>
           </div>
@@ -254,7 +255,7 @@ export function UsageDetails({
                   return (
                     <g key={`requests-${value}`} className="opacity-25">
                       <line x1={paddingLeft} y1={y} x2={width - paddingRight} y2={y} stroke="currentColor" strokeDasharray="4,4" strokeWidth="1.2" />
-                      <text x={paddingLeft - 14} y={y + 6} textAnchor="end" fontSize="18" fontWeight="700" fill="currentColor">{value}</text>
+                      <text x={paddingLeft - 14} y={y + 6} textAnchor="end" fontSize="18" fontWeight="700" fill="currentColor">{formatCompactNumber(value)}</text>
                     </g>
                   );
                 })}
@@ -333,7 +334,7 @@ export function UsageDetails({
                   </div>
                   <div className="mt-1 flex items-baseline justify-between gap-4">
                     <span className="text-[11px] font-semibold text-foreground/50">Tokens Used</span>
-                    <span className="text-sm font-bold text-foreground tabular-nums">{hoveredPoint.tokens.toLocaleString()}</span>
+                    <span className="text-sm font-bold text-foreground tabular-nums">{formatCompactNumber(hoveredPoint.tokens)}</span>
                   </div>
                 </div>
               )}
@@ -389,7 +390,7 @@ export function UsageDetails({
                   return (
                     <g key={value} className="opacity-30">
                       <line x1={paddingLeft} y1={y} x2={width - paddingRight} y2={y} stroke="currentColor" strokeDasharray="4,4" strokeWidth="1.2" />
-                      <text x={paddingLeft - 14} y={y + 6} textAnchor="end" fontSize="18" fontWeight="700" fill="currentColor">{value}</text>
+                      <text x={paddingLeft - 14} y={y + 6} textAnchor="end" fontSize="18" fontWeight="700" fill="currentColor">{formatCompactNumber(value)}</text>
                     </g>
                   );
                 })}
@@ -452,7 +453,7 @@ export function UsageDetails({
                   <div className="text-[10px] font-bold uppercase tracking-wider text-foreground/40">{hoveredPoint.date}</div>
                   <div className="mt-1 flex items-baseline justify-between gap-4">
                     <span className="text-[11px] font-semibold text-foreground/50">API Errors</span>
-                    <span className="text-sm font-bold text-red-400 tabular-nums">{hoveredErrors.toLocaleString()}</span>
+                    <span className="text-sm font-bold text-red-400 tabular-nums">{formatCompactNumber(hoveredErrors)}</span>
                   </div>
                   <div className="mt-1 text-[11px] font-semibold text-foreground/60 tabular-nums">
                     400: {hoveredPoint.errors.badRequest} | 403: {hoveredPoint.errors.forbidden} | 404: {hoveredPoint.errors.notFound}

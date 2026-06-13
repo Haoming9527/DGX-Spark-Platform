@@ -42,9 +42,9 @@ export async function GET(req: NextRequest) {
     const result = await query(
       `SELECT 
           d.date::date AS usage_date,
-          COALESCE(SUM(u.tokens), 0)::int AS tokens,
-          COALESCE(SUM(u.prompt_tokens), 0)::int AS prompt_tokens,
-          COALESCE(SUM(u.completion_tokens), 0)::int AS completion_tokens,
+          COALESCE(SUM(u.tokens), 0)::float8 AS tokens,
+          COALESCE(SUM(u.prompt_tokens), 0)::float8 AS prompt_tokens,
+          COALESCE(SUM(u.completion_tokens), 0)::float8 AS completion_tokens,
           COALESCE(COUNT(u.id), 0)::int AS requests,
           COALESCE(COUNT(CASE WHEN u.status_code >= 200 AND u.status_code < 300 THEN 1 END), 0)::int AS success_requests,
           COALESCE(COUNT(CASE WHEN u.status_code = 400 THEN 1 END), 0)::int AS error_400,
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
       const successRequests = row.success_requests;
       const successRate = requests > 0
         ? Math.max(0, Math.min(100, Math.round((successRequests / requests) * 100)))
-        : 100;
+        : 0;
 
       return {
         date: dateStr,

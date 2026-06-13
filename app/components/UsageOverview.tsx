@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Zap, Activity, HelpCircle } from "lucide-react";
+import { formatCompactNumber } from "../../lib/formatNumber";
 
 interface ApiKey {
   id: string;
@@ -122,7 +123,7 @@ export function UsageOverview({ keys, keysLoading, onKeyClick }: UsageOverviewPr
           </div>
           <div>
             <div className="text-xs text-foreground/40 font-medium mb-0.5">Total Tokens</div>
-            <div className="text-xl font-bold tabular-nums">{totalTokens.toLocaleString()}</div>
+            <div className="text-xl font-bold tabular-nums" title={totalTokens.toLocaleString()}>{formatCompactNumber(totalTokens)}</div>
           </div>
         </div>
 
@@ -132,7 +133,7 @@ export function UsageOverview({ keys, keysLoading, onKeyClick }: UsageOverviewPr
           </div>
           <div>
             <div className="text-xs text-foreground/40 font-medium mb-0.5">Total Requests</div>
-            <div className="text-xl font-bold tabular-nums">{totalRequests.toLocaleString()}</div>
+            <div className="text-xl font-bold tabular-nums" title={totalRequests.toLocaleString()}>{formatCompactNumber(totalRequests)}</div>
           </div>
         </div>
       </div>
@@ -214,7 +215,7 @@ export function UsageOverview({ keys, keysLoading, onKeyClick }: UsageOverviewPr
                       </code>
                     </div>
                     <div className="font-bold text-sm text-foreground tabular-nums text-right">
-                      {currentVal.toLocaleString()}
+                      <span title={currentVal.toLocaleString()}>{formatCompactNumber(currentVal)}</span>
                     </div>
                   </div>
                 );

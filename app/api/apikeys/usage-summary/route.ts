@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
     const result = await query(
       `SELECT
           k.id,
-          COALESCE(SUM(u.tokens), 0)::int AS tokens,
+          COALESCE(SUM(u.tokens), 0)::float8 AS tokens,
           COALESCE(COUNT(u.id), 0)::int AS requests
        FROM api_keys k
        LEFT JOIN api_key_usage u
