@@ -163,7 +163,7 @@ export function KeysView({
                           disabled={renaming}
                           maxLength={100}
                           required
-                          className="px-2 py-1 bg-background border border-border/80 focus:border-nvidia-green/50 rounded text-xs outline-none w-full max-w-[130px] min-w-0"
+                          className="px-2 py-1 bg-background border border-border/80 focus:border-nvidia-green/50 rounded text-xs outline-none w-full max-w-[220px] min-w-0"
                           autoFocus
                           onKeyDown={async (e) => {
                             if (e.key === "Enter") handleSaveRename(key.id);
@@ -199,7 +199,7 @@ export function KeysView({
                             setEditingId(key.id);
                             setEditingName(key.name);
                           }}
-                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-panel-hover rounded border border-transparent text-foreground/30 hover:text-nvidia-green transition-all cursor-pointer shrink-0"
+                          className="p-1 hover:bg-panel-hover rounded border border-transparent text-foreground/40 hover:text-nvidia-green transition-all cursor-pointer shrink-0"
                           title="Rename key"
                         >
                           <Edit2 className="w-3 h-3" />

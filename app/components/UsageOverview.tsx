@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Zap, Activity, HelpCircle } from "lucide-react";
 
 interface ApiKey {
@@ -18,40 +18,77 @@ interface UsageOverviewProps {
   onKeyClick: (key: ApiKey) => void;
 }
 
+interface UsageSummary {
+  tokens: number;
+  requests: number;
+}
+
 export function UsageOverview({ keys, keysLoading, onKeyClick }: UsageOverviewProps) {
   const [metric, setMetric] = useState<"tokens" | "requests">("tokens");
   const [timeframe, setTimeframe] = useState<"1h" | "24h" | "7d" | "30d">("7d");
+  const [usageByKeyId, setUsageByKeyId] = useState<Record<string, UsageSummary>>({});
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [usageError, setUsageError] = useState<string | null>(null);
+  const keyIds = useMemo(() => keys.map((key) => key.id).join(","), [keys]);
 
-  // Heuristically calculate usage based on timeframe to make simulator reactive
+  useEffect(() => {
+    if (keys.length === 0) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setUsageLoading(true);
+      setUsageError(null);
+    }, 0);
+
+    fetch(`/api/apikeys/usage-summary?timeframe=${timeframe}`, {
+      signal: controller.signal,
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load usage metrics.");
+        return res.json();
+      })
+      .then((data) => {
+        const nextUsage: Record<string, UsageSummary> = {};
+        for (const row of data.usage || []) {
+          nextUsage[row.id] = {
+            tokens: row.tokens || 0,
+            requests: row.requests || 0,
+          };
+        }
+        setUsageByKeyId(nextUsage);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.error("Error loading usage summary:", err);
+        setUsageByKeyId({});
+        setUsageError(err instanceof Error ? err.message : "Failed to load usage metrics.");
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        if (!controller.signal.aborted) {
+          setUsageLoading(false);
+        }
+      });
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [keyIds, keys.length, timeframe]);
+
   const keysWithTimeframeUsage = useMemo(() => {
     return keys.map((key) => {
-      let seed = 0;
-      for (let i = 0; i < key.id.length; i++) {
-        seed += key.id.charCodeAt(i);
-      }
-      const variance = 0.85 + (seed % 7) * 0.05; // 0.85 to 1.15
-
-      let tokens = key.total_tokens;
-      let requests = key.total_requests;
-
-      if (timeframe === "7d") {
-        tokens = Math.min(key.total_tokens, Math.round(key.total_tokens * 0.35 * variance));
-        requests = Math.min(key.total_requests, Math.round(key.total_requests * 0.35 * variance));
-      } else if (timeframe === "24h") {
-        tokens = Math.min(key.total_tokens, Math.round(key.total_tokens * 0.06 * variance));
-        requests = Math.min(key.total_requests, Math.round(key.total_requests * 0.06 * variance));
-      } else if (timeframe === "1h") {
-        tokens = Math.min(key.total_tokens, Math.round(key.total_tokens * 0.003 * variance));
-        requests = Math.min(key.total_requests, Math.round(key.total_requests * 0.003 * variance));
-      }
+      const usage = usageByKeyId[key.id] || { tokens: 0, requests: 0 };
 
       return {
         ...key,
-        tokens,
-        requests,
+        tokens: usage.tokens,
+        requests: usage.requests,
       };
     });
-  }, [keys, timeframe]);
+  }, [keys, usageByKeyId]);
 
   const totalTokens = useMemo(() => {
     return keysWithTimeframeUsage.reduce((s, k) => s + k.tokens, 0);
@@ -133,7 +170,7 @@ export function UsageOverview({ keys, keysLoading, onKeyClick }: UsageOverviewPr
           </div>
         </div>
 
-        {keysLoading ? (
+        {keysLoading || usageLoading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-foreground/30">
             <Activity className="w-6 h-6 animate-pulse text-nvidia-green" />
             <span className="text-sm">Calculating usage metrics…</span>
@@ -142,6 +179,11 @@ export function UsageOverview({ keys, keysLoading, onKeyClick }: UsageOverviewPr
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-foreground/30 text-center">
             <HelpCircle className="w-8 h-8 opacity-30" />
             <p className="text-sm">No usage records found. Active API keys will display graphs here.</p>
+          </div>
+        ) : usageError ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-3 text-foreground/30 text-center">
+            <HelpCircle className="w-8 h-8 opacity-30" />
+            <p className="text-sm">{usageError}</p>
           </div>
         ) : (
           <div className="border border-border rounded-xl overflow-hidden divide-y divide-border/30 bg-background/20">

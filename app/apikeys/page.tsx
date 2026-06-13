@@ -224,7 +224,7 @@ export default function ApiKeysPage() {
         </nav>
 
         {/* Content Pane */}
-        <main className="flex-1 max-w-4xl p-6 md:p-8 space-y-6">
+        <main className="flex-1 w-full max-w-6xl p-6 md:p-8 space-y-6">
           <div className="border-b border-border/50 pb-4 mb-2">
             <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
               {activeTab === "keys" && "Manage API Keys"}
