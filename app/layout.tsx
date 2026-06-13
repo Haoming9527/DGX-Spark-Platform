@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DGX Spark Platform | AI Chat",
+  title: "DGX Spark Platform",
   description: "Secure, local LLM chat interface powered by DGX Spark and Ollama.",
   icons: {
     icon: "/logo.svg",

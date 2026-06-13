@@ -8,6 +8,8 @@ import { Header } from "./Header";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { OfflineState } from "./OfflineState";
+import { AuthModal } from "./AuthModal";
+import { LogOut, TriangleAlert, X, Loader2 } from "lucide-react";
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -23,8 +25,48 @@ export function ChatInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   
+  const [user, setUser] = useState<{ id: string; username: string; email: string } | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const checkSession = async () => {
+    try {
+      const res = await fetch("/api/auth/login");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          setUser(data.user);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to check session:", err);
+    }
+  };
+
+  useEffect(() => {
+    checkSession();
+  }, []);
+
+  const handleLogout = async () => {
+    setLogoutLoading(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setUser(null);
+        setIsLogoutConfirmOpen(false);
+      }
+    } catch (err) {
+      console.error("Logout failed:", err);
+    } finally {
+      setLogoutLoading(false);
+    }
+  };
 
   const fetchModels = async () => {
     setModelsLoading(true);
@@ -239,6 +281,9 @@ export function ChatInterface() {
         setIsDropdownOpen={setIsDropdownOpen}
         setSelectedModel={setSelectedModel}
         clearChat={clearChat}
+        user={user}
+        onAuthClick={() => setIsAuthModalOpen(true)}
+        onLogout={() => setIsLogoutConfirmOpen(true)}
       />
 
       {/* Main Chat Area */}
@@ -292,7 +337,96 @@ export function ChatInterface() {
         useReasoning={useReasoning}
         setUseReasoning={setUseReasoning}
       />
+
+      <AnimatePresence>
+        {isAuthModalOpen && (
+          <AuthModal
+            isOpen={isAuthModalOpen}
+            onClose={() => setIsAuthModalOpen(false)}
+            onSuccess={(u) => setUser(u)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isLogoutConfirmOpen && (
+          <ConfirmLogoutDialog
+            onConfirm={handleLogout}
+            onCancel={() => !logoutLoading && setIsLogoutConfirmOpen(false)}
+            loading={logoutLoading}
+          />
+        )}
+      </AnimatePresence>
       
+    </div>
+  );
+}
+
+// ── Logout Confirmation Dialog ────────────────────────────────────────────────
+function ConfirmLogoutDialog({
+  onConfirm,
+  onCancel,
+  loading,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.92, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: 16 }}
+        transition={{ duration: 0.18 }}
+        className="w-full max-w-sm bg-panel border border-border rounded-2xl shadow-2xl overflow-hidden"
+      >
+        <div className="flex items-start justify-between p-5 pb-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+              <TriangleAlert className="w-4.5 h-4.5 text-red-400" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-foreground">Sign Out</h3>
+              <p className="text-xs text-foreground/40 mt-0.5 font-sans">Are you sure you want to exit?</p>
+            </div>
+          </div>
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="text-foreground/30 hover:text-foreground/60 transition-colors p-1 rounded-lg hover:bg-panel-hover cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-foreground/70 font-sans">
+            You will need to sign in again to manage your API keys or access your profile.
+          </p>
+
+          <div className="flex gap-2.5 font-sans">
+            <button
+              onClick={onCancel}
+              disabled={loading}
+              className="flex-1 py-2 rounded-lg border border-border bg-panel-hover text-sm font-semibold text-foreground/70 hover:text-foreground hover:border-border/80 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={loading}
+              className="flex-1 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-bold transition-colors cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Signing out…</>
+              ) : (
+                <><LogOut className="w-3.5 h-3.5" /> Sign Out</>
+              )}
+            </button>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }

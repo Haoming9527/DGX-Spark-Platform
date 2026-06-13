@@ -2,7 +2,8 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { ChevronDown, Check, Loader2, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, Check, Loader2, RefreshCw, User, Key, LogOut, Menu } from "lucide-react";
 import { ModelItem } from "../types/chat";
 
 interface HeaderProps {
@@ -13,6 +14,10 @@ interface HeaderProps {
   setIsDropdownOpen: (open: boolean) => void;
   setSelectedModel: (id: string) => void;
   clearChat: () => void;
+  user: { id: string; username: string; email: string } | null;
+  onAuthClick: () => void;
+  onLogout: () => void;
+  onSidebarToggle?: () => void;
 }
 
 export function Header({
@@ -23,32 +28,76 @@ export function Header({
   setIsDropdownOpen,
   setSelectedModel,
   clearChat,
+  user,
+  onAuthClick,
+  onLogout,
+  onSidebarToggle,
 }: HeaderProps) {
   return (
-    <header className="flex-none px-4 py-3 md:px-8 border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-[100] flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-nvidia-green/10 flex items-center justify-center border border-nvidia-green/20 shadow-[0_0_15px_rgba(118,185,0,0.15)] overflow-hidden p-1">
-          <Image src="/logo.svg" alt="DGX Spark Logo" width={40} height={40} className="w-full h-full object-contain" priority />
+    <header className="flex-none px-4 py-3 border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-[100] flex items-center justify-between font-sans">
+      <div className="flex items-center gap-2.5">
+        {onSidebarToggle && (
+          <button
+            onClick={onSidebarToggle}
+            className="p-1.5 rounded-lg hover:bg-panel-hover text-foreground/60 hover:text-foreground transition-colors cursor-pointer mr-0.5"
+            title="Toggle Sidebar"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+        <div className="w-9 h-9 rounded-lg bg-nvidia-green/10 flex items-center justify-center border border-nvidia-green/20 shadow-[0_0_12px_rgba(118,185,0,0.12)] overflow-hidden p-0.5">
+          <Image src="/logo.svg" alt="DGX Spark Logo" width={36} height={36} className="w-full h-full object-contain" priority />
         </div>
-        <h1 className="text-lg sm:text-xl font-bold tracking-tight">
+        <h1 className="text-base sm:text-lg font-bold tracking-tight hidden sm:block">
           DGX Spark<span className="text-nvidia-green"> Platform</span>
         </h1>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        {/* User Account / Auth controls */}
+        {user ? (
+          <div className="flex items-center gap-2">
+            {/* API Keys — navigates to /apikeys page */}
+            <Link
+              href="/apikeys"
+              className="flex items-center gap-2 px-3 py-2 bg-panel hover:bg-panel-hover border border-border hover:border-nvidia-green/50 rounded-lg text-sm font-semibold transition-colors cursor-pointer"
+              title="Manage API Keys"
+            >
+              <Key className="w-4 h-4 text-nvidia-green" />
+              <span className="hidden sm:inline max-w-[100px] truncate">{user.username}</span>
+            </Link>
+            <button
+              onClick={onLogout}
+              className="flex items-center justify-center w-9 h-9 bg-panel border border-border rounded-lg text-foreground hover:text-red-500 hover:border-red-500/50 transition-all shadow-sm cursor-pointer"
+              title="Log Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={onAuthClick}
+            className="flex items-center gap-2 px-4 py-2 bg-nvidia-green/10 hover:bg-nvidia-green/20 border border-nvidia-green/30 hover:border-nvidia-green/50 rounded-lg text-nvidia-green text-sm font-bold transition-colors cursor-pointer"
+          >
+            <User className="w-4 h-4" />
+            <span>Sign In</span>
+          </button>
+        )}
+
         <button
           onClick={clearChat}
-          className="flex items-center justify-center w-10 h-10 bg-panel border border-border rounded-lg text-foreground hover:text-nvidia-green hover:border-nvidia-green/50 transition-all shadow-sm"
+          className="flex items-center justify-center w-9 h-9 bg-panel border border-border rounded-lg text-foreground hover:text-nvidia-green hover:border-nvidia-green/50 transition-all shadow-sm cursor-pointer"
           title="Clear Chat"
         >
           <RefreshCw className="w-5 h-5" />
         </button>
 
+        {/* Model selector */}
         <div className="relative">
           <button
             onClick={() => !modelsLoading && setIsDropdownOpen(!isDropdownOpen)}
             disabled={modelsLoading}
-            className="flex items-center gap-2 px-4 py-2 bg-panel rounded-lg border border-border hover:border-nvidia-green/50 transition-colors text-sm font-medium disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 bg-panel rounded-lg border border-border hover:border-nvidia-green/50 transition-colors text-sm font-medium disabled:opacity-50 cursor-pointer"
           >
             {modelsLoading ? (
               <>
@@ -59,9 +108,7 @@ export function Header({
                 <div className="w-2 h-2 rounded-full bg-nvidia-green animate-pulse shadow-[0_0_8px_#76b900]" />
                 {models.find((m) => m.id === selectedModel)?.name || "Select Model"}
                 <ChevronDown
-                  className={`w-4 h-4 text-foreground/40 transition-transform ${
-                    isDropdownOpen ? "rotate-180" : ""
-                  }`}
+                  className={`w-4 h-4 text-foreground/40 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`}
                 />
               </>
             )}
@@ -91,7 +138,7 @@ export function Header({
                           setSelectedModel(model.id);
                           setIsDropdownOpen(false);
                         }}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-colors text-left ${
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-colors text-left cursor-pointer ${
                           selectedModel === model.id
                             ? "bg-nvidia-green/10 text-nvidia-green"
                             : "hover:bg-panel-hover text-foreground/70"
