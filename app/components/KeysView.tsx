@@ -134,7 +134,7 @@ export function KeysView({
           </div>
         ) : (
           <>
-            <div className="hidden md:grid grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr_0.5fr] gap-4 px-6 py-2.5 text-[10px] font-bold uppercase tracking-widest text-foreground/30 border-b border-border/30">
+            <div className="hidden lg:grid grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr_0.5fr] gap-4 px-6 py-2.5 text-[10px] font-bold uppercase tracking-widest text-foreground/30 border-b border-border/30">
               <span>Name</span>
               <span>Key Prefix</span>
               <span>Requests</span>
@@ -146,7 +146,7 @@ export function KeysView({
               {keys.map((key) => (
                 <div
                   key={key.id}
-                  className="relative grid grid-cols-1 md:grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr_0.5fr] gap-2.5 md:gap-4 items-center px-4 sm:px-6 py-4 pr-14 md:pr-6 hover:bg-background/40 transition-colors"
+                  className="relative grid grid-cols-1 lg:grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr_0.5fr] gap-2.5 lg:gap-4 items-center px-4 sm:px-6 py-4 pr-14 lg:pr-6 hover:bg-background/40 transition-colors"
                 >
                   <div className="font-semibold text-sm text-foreground truncate flex items-center gap-2 min-w-0">
                     {editingId === key.id ? (
@@ -158,7 +158,7 @@ export function KeysView({
                           disabled={renaming}
                           maxLength={100}
                           required
-                          className="px-2 py-1 bg-background border border-border/80 focus:border-nvidia-green/50 rounded text-xs outline-none w-full max-w-[180px] sm:max-w-[220px] min-w-0"
+                          className="px-2 py-1 bg-background border border-border/80 focus:border-nvidia-green/50 rounded text-xs outline-none w-full max-w-[180px] sm:max-w-[220px] lg:max-w-full min-w-0"
                           autoFocus
                           onKeyDown={(e) => {
                             if (e.key === "Enter") handleSaveRename(key.id);
@@ -199,25 +199,28 @@ export function KeysView({
                     )}
                   </div>
                   <div className="min-w-0">
-                    <code className="max-w-full text-xs font-mono text-foreground/50 bg-background border border-border/50 rounded px-2 py-0.5 truncate md:max-w-[180px] inline-block">
+                    <code className="max-w-full text-xs font-mono text-foreground/50 bg-background border border-border/50 rounded px-2 py-0.5 truncate lg:max-w-[180px] inline-block">
                       {key.key_prefix}...
                     </code>
                   </div>
-                  <div className="text-sm text-foreground/60 tabular-nums flex justify-between md:block">
-                    <span className="md:hidden text-foreground/35">Requests</span>
+                  <div className="text-sm text-foreground/60 tabular-nums flex justify-between lg:block">
+                    <span className="lg:hidden text-foreground/35">Requests</span>
                     {formatCompactNumber(key.total_requests)}
                   </div>
-                  <div className="text-sm text-foreground/60 tabular-nums flex justify-between md:block">
-                    <span className="md:hidden text-foreground/35">Tokens</span>
+                  <div className="text-sm text-foreground/60 tabular-nums flex justify-between lg:block">
+                    <span className="lg:hidden text-foreground/35">Tokens</span>
                     {formatCompactNumber(key.total_tokens)}
                   </div>
-                  <div className="text-xs text-foreground/40 flex items-center gap-1">
+                  <div className="text-xs text-foreground/40 flex items-center justify-between gap-2 lg:justify-start">
+                    <span className="lg:hidden text-sm text-foreground/35">Last used</span>
+                    <span className="flex items-center gap-1 min-w-0">
                     <Clock className="w-3.5 h-3.5 shrink-0" />
-                    {key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : "Never"}
+                      <span className="truncate">{key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : "Never"}</span>
+                    </span>
                   </div>
                   <button
                     onClick={() => setConfirmTarget({ id: key.id, name: key.name })}
-                    className="absolute right-4 top-4 md:static flex items-center justify-center w-8 h-8 rounded-lg border border-border/40 md:border-transparent hover:border-red-500/30 hover:bg-red-500/10 text-foreground/40 hover:text-red-500 transition-all cursor-pointer"
+                    className="absolute right-4 top-4 lg:static flex items-center justify-center w-8 h-8 rounded-lg border border-border/40 lg:border-transparent hover:border-red-500/30 hover:bg-red-500/10 text-foreground/40 hover:text-red-500 transition-all cursor-pointer"
                     title="Revoke key"
                   >
                     <Trash2 className="w-4 h-4" />
