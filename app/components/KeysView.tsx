@@ -47,8 +47,8 @@ export function KeysView({
   onRenameKey,
 }: KeysViewProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingName, setEditingName] = useState<string>("");
-  const [renaming, setRenaming] = useState<boolean>(false);
+  const [editingName, setEditingName] = useState("");
+  const [renaming, setRenaming] = useState(false);
 
   const handleSaveRename = async (id: string) => {
     if (!editingName.trim()) return;
@@ -56,20 +56,18 @@ export function KeysView({
     try {
       await onRenameKey(id, editingName);
       setEditingId(null);
-    } catch {
-      // Parent handleRename sets the error banner automatically
     } finally {
       setRenaming(false);
     }
   };
+
   return (
-    <div className="space-y-6">
-      {/* Create Key Form */}
-      <div className="bg-panel border border-border rounded-xl p-5 space-y-4">
+    <div className="space-y-5 sm:space-y-6">
+      <div className="bg-panel border border-border rounded-lg sm:rounded-xl p-4 sm:p-5 space-y-4">
         <h2 className="text-sm font-bold flex items-center gap-2">
           <Plus className="w-4 h-4 text-nvidia-green" /> Create New Key
         </h2>
-        <form onSubmit={handleCreate} className="flex gap-3">
+        <form onSubmit={handleCreate} className="flex flex-col sm:flex-row gap-3">
           <input
             type="text"
             required
@@ -77,26 +75,25 @@ export function KeysView({
             onChange={(e) => setNewKeyName(e.target.value)}
             placeholder="e.g. VSCode / Cursor / LangChain"
             maxLength={100}
-            className="flex-1 px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-foreground/25 focus:border-nvidia-green/50 outline-none transition-colors"
+            className="min-w-0 flex-1 px-3 sm:px-4 py-2.5 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-foreground/25 focus:border-nvidia-green/50 outline-none transition-colors"
           />
           <button
             type="submit"
             disabled={creating || !newKeyName.trim() || keys.length >= 20}
-            className="px-5 py-2.5 bg-nvidia-green text-black font-bold rounded-lg text-sm hover:bg-nvidia-green/90 transition-colors disabled:opacity-50 flex items-center gap-2 cursor-pointer shadow-md shadow-nvidia-green/15 shrink-0"
+            className="h-10 px-5 bg-nvidia-green text-black font-bold rounded-lg text-sm hover:bg-nvidia-green/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-nvidia-green/15 shrink-0"
           >
             {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
             Generate
           </button>
         </form>
 
-        {/* One-time key reveal */}
         {createdRawKey && (
-          <div className="rounded-xl border border-nvidia-green/30 bg-nvidia-green/5 p-4 space-y-3">
-            <div className="flex items-center gap-2 text-nvidia-green text-xs font-bold">
+          <div className="rounded-lg sm:rounded-xl border border-nvidia-green/30 bg-nvidia-green/5 p-3 sm:p-4 space-y-3">
+            <div className="flex items-start sm:items-center gap-2 text-nvidia-green text-xs font-bold leading-5">
               <Shield className="w-3.5 h-3.5" />
-              Key created — copy it now. It will <span className="underline">never</span> be shown again.
+              Key created. Copy it now. It will <span className="underline">never</span> be shown again.
             </div>
-            <div className="flex items-center gap-2 bg-background border border-border/60 rounded-lg p-2.5">
+            <div className="flex items-center gap-2 bg-background border border-border/60 rounded-lg p-2.5 min-w-0">
               <code className="flex-1 text-xs font-mono text-foreground/90 break-all select-all pl-1">
                 {createdRawKey}
               </code>
@@ -112,17 +109,15 @@ export function KeysView({
         )}
       </div>
 
-      {/* Error banner */}
       {error && (
-        <div className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
+        <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-lg sm:rounded-xl text-red-400 text-sm">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           {error}
         </div>
       )}
 
-      {/* Keys Table */}
-      <div className="bg-panel border border-border rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-border/50 flex items-center justify-between">
+      <div className="bg-panel border border-border rounded-lg sm:rounded-xl overflow-hidden">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border/50 flex items-center justify-between">
           <h2 className="text-sm font-bold">Active Keys</h2>
           <span className="text-xs text-foreground/40 tabular-nums">{keys.length} / 20</span>
         </div>
@@ -130,7 +125,7 @@ export function KeysView({
         {keysLoading ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-foreground/30">
             <Loader2 className="w-6 h-6 animate-spin text-nvidia-green" />
-            <span className="text-sm">Loading keys…</span>
+            <span className="text-sm">Loading keys...</span>
           </div>
         ) : keys.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-foreground/30">
@@ -139,7 +134,6 @@ export function KeysView({
           </div>
         ) : (
           <>
-            {/* Table header */}
             <div className="hidden md:grid grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr_0.5fr] gap-4 px-6 py-2.5 text-[10px] font-bold uppercase tracking-widest text-foreground/30 border-b border-border/30">
               <span>Name</span>
               <span>Key Prefix</span>
@@ -152,7 +146,7 @@ export function KeysView({
               {keys.map((key) => (
                 <div
                   key={key.id}
-                  className="grid grid-cols-1 md:grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr_0.5fr] gap-3 md:gap-4 items-center px-6 py-4 hover:bg-background/40 transition-colors"
+                  className="relative grid grid-cols-1 md:grid-cols-[2.5fr_2fr_1fr_1fr_1.5fr_0.5fr] gap-2.5 md:gap-4 items-center px-4 sm:px-6 py-4 pr-14 md:pr-6 hover:bg-background/40 transition-colors"
                 >
                   <div className="font-semibold text-sm text-foreground truncate flex items-center gap-2 min-w-0">
                     {editingId === key.id ? (
@@ -164,9 +158,9 @@ export function KeysView({
                           disabled={renaming}
                           maxLength={100}
                           required
-                          className="px-2 py-1 bg-background border border-border/80 focus:border-nvidia-green/50 rounded text-xs outline-none w-full max-w-[220px] min-w-0"
+                          className="px-2 py-1 bg-background border border-border/80 focus:border-nvidia-green/50 rounded text-xs outline-none w-full max-w-[180px] sm:max-w-[220px] min-w-0"
                           autoFocus
-                          onKeyDown={async (e) => {
+                          onKeyDown={(e) => {
                             if (e.key === "Enter") handleSaveRename(key.id);
                             else if (e.key === "Escape") setEditingId(null);
                           }}
@@ -177,11 +171,7 @@ export function KeysView({
                           className="p-1 hover:bg-nvidia-green/10 rounded border border-transparent hover:border-nvidia-green/20 text-nvidia-green cursor-pointer disabled:opacity-50 shrink-0"
                           title="Save name"
                         >
-                          {renaming ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Check className="w-3.5 h-3.5" />
-                          )}
+                          {renaming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                         </button>
                         <button
                           onClick={() => setEditingId(null)}
@@ -209,14 +199,16 @@ export function KeysView({
                     )}
                   </div>
                   <div className="min-w-0">
-                    <code className="text-xs font-mono text-foreground/50 bg-background border border-border/50 rounded px-2 py-0.5 truncate max-w-[180px] inline-block">
-                      {key.key_prefix}…
+                    <code className="max-w-full text-xs font-mono text-foreground/50 bg-background border border-border/50 rounded px-2 py-0.5 truncate md:max-w-[180px] inline-block">
+                      {key.key_prefix}...
                     </code>
                   </div>
-                  <div className="text-sm text-foreground/60 tabular-nums">
+                  <div className="text-sm text-foreground/60 tabular-nums flex justify-between md:block">
+                    <span className="md:hidden text-foreground/35">Requests</span>
                     {formatCompactNumber(key.total_requests)}
                   </div>
-                  <div className="text-sm text-foreground/60 tabular-nums">
+                  <div className="text-sm text-foreground/60 tabular-nums flex justify-between md:block">
+                    <span className="md:hidden text-foreground/35">Tokens</span>
                     {formatCompactNumber(key.total_tokens)}
                   </div>
                   <div className="text-xs text-foreground/40 flex items-center gap-1">
@@ -225,7 +217,7 @@ export function KeysView({
                   </div>
                   <button
                     onClick={() => setConfirmTarget({ id: key.id, name: key.name })}
-                    className="flex items-center justify-center w-8 h-8 rounded-lg border border-transparent hover:border-red-500/30 hover:bg-red-500/10 text-foreground/30 hover:text-red-500 transition-all cursor-pointer"
+                    className="absolute right-4 top-4 md:static flex items-center justify-center w-8 h-8 rounded-lg border border-border/40 md:border-transparent hover:border-red-500/30 hover:bg-red-500/10 text-foreground/40 hover:text-red-500 transition-all cursor-pointer"
                     title="Revoke key"
                   >
                     <Trash2 className="w-4 h-4" />

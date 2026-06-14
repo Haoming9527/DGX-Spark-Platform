@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
       const successRequests = row.success_requests;
       const successRate = requests > 0
         ? Math.max(0, Math.min(100, Math.round((successRequests / requests) * 100)))
-        : 0;
+        : 100;
 
       return {
         date: dateStr,

@@ -155,18 +155,25 @@ export async function POST(req: NextRequest) {
 
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
+      let buffer = "";
+      let totalTokens = 0;
+      let promptTokens = 0;
+      let completionTokens = 0;
+      let usageLogged = false;
+
+      const logStreamUsage = async (statusCode: number) => {
+        if (usageLogged) return;
+        usageLogged = true;
+        await logApiUsage(statusCode, totalTokens, promptTokens, completionTokens);
+      };
 
       const customStream = new ReadableStream({
         async start(controller) {
-          let buffer = "";
-          let totalTokens = 0;
-          let promptTokens = 0;
-          let completionTokens = 0;
           try {
             while (true) {
               const { done, value } = await reader.read();
               if (done) {
-                await logApiUsage(200, totalTokens, promptTokens, completionTokens);
+                await logStreamUsage(200);
                 controller.enqueue(encoder.encode("data: [DONE]\n\n"));
                 controller.close();
                 break;
@@ -191,6 +198,7 @@ export async function POST(req: NextRequest) {
                     promptTokens = parsed.prompt_eval_count || 0;
                     completionTokens = parsed.eval_count || 0;
                     totalTokens = promptTokens + completionTokens;
+                    await logStreamUsage(200);
                   }
 
                   const openAiChunk = {
@@ -214,8 +222,16 @@ export async function POST(req: NextRequest) {
               }
             }
           } catch (err) {
-            await logApiUsage(500);
+            await logStreamUsage(500);
             controller.error(err);
+          }
+        },
+        async cancel() {
+          try {
+            await logStreamUsage(499);
+            await reader.cancel();
+          } catch (err) {
+            console.error("Failed to log canceled stream usage:", err);
           }
         },
       });

@@ -7,9 +7,8 @@ import { Message, ModelItem } from "../types/chat";
 import { Header } from "./Header";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
-import { OfflineState } from "./OfflineState";
 import { AuthModal } from "./AuthModal";
-import { LogOut, TriangleAlert, X, Loader2 } from "lucide-react";
+import { LogOut, TriangleAlert, X, Loader2, RefreshCw } from "lucide-react";
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -271,7 +270,7 @@ export function ChatInterface() {
   };
 
   return (
-    <div className="flex flex-col h-dvh max-h-dvh bg-background text-foreground overflow-hidden font-sans">
+    <div className="flex h-[100svh] max-h-[100svh] flex-col bg-background text-foreground overflow-hidden font-sans sm:h-dvh sm:max-h-dvh">
       
       <Header 
         models={models}
@@ -287,19 +286,19 @@ export function ChatInterface() {
       />
 
       {/* Main Chat Area */}
-      <main className="flex-1 overflow-y-auto px-3 sm:px-4 md:px-8 py-4 sm:py-6 scroll-smooth">
-        <div className="max-w-4xl mx-auto flex flex-col gap-8 pb-20">
+      <main className={`flex-1 min-h-0 px-3 sm:px-4 md:px-8 py-3 sm:py-6 scroll-smooth ${messages.length === 0 ? "overflow-hidden" : "overflow-y-auto"}`}>
+        <div className={`max-w-4xl mx-auto flex flex-col gap-5 sm:gap-8 ${messages.length === 0 ? "h-full pb-0" : "pb-32 sm:pb-20"}`}>
           {messages.length === 0 ? (
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center justify-center h-full min-h-[50vh] text-center"
+              className="flex flex-col items-center justify-center h-full min-h-0 text-center"
             >
               {isOffline ? (
                 <OfflineState onRetry={fetchModels} />
               ) : (
                 <>
-                  <div className="w-20 h-20 bg-nvidia-green/10 rounded-3xl flex items-center justify-center border border-nvidia-green/20 mb-8 relative p-3 overflow-hidden shadow-[0_0_30px_rgba(118,185,0,0.2)]">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-nvidia-green/10 rounded-2xl sm:rounded-3xl flex items-center justify-center border border-nvidia-green/20 mb-5 sm:mb-8 relative p-2.5 sm:p-3 overflow-hidden shadow-[0_0_30px_rgba(118,185,0,0.2)]">
                     <Image 
                       src="/logo.svg" 
                       alt="DGX Spark Logo" 
@@ -309,8 +308,8 @@ export function ChatInterface() {
                       priority
                     />
                   </div>
-                  <h2 className="text-3xl font-semibold mb-3">How can I help you today?</h2>
-                  <p className="text-foreground/40 max-w-md">
+                  <h2 className="text-2xl sm:text-3xl font-semibold mb-2 sm:mb-3">How can I help you today?</h2>
+                  <p className="text-sm sm:text-base text-foreground/40 max-w-[18rem] sm:max-w-md">
                     Experience the power of local LLMs running on DGX Spark. Select a model above and start chatting.
                   </p>
                 </>
@@ -363,6 +362,54 @@ export function ChatInterface() {
 }
 
 // ── Logout Confirmation Dialog ────────────────────────────────────────────────
+function OfflineState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center px-4 text-center">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-16 h-16 rounded-2xl bg-panel border border-border flex items-center justify-center mb-5 shadow-[0_0_28px_rgba(118,185,0,0.08)] relative overflow-hidden"
+      >
+        <Image
+          src="/logo.svg"
+          alt="DGX Spark Logo"
+          width={28}
+          height={28}
+          className="w-7 h-7 object-contain opacity-25 grayscale"
+        />
+        <div className="absolute inset-0 bg-nvidia-green/10 rounded-full blur-2xl opacity-40" />
+        <div className="absolute inset-0 border border-nvidia-green/10 rounded-2xl pointer-events-none" />
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <h2 className="text-2xl font-bold tracking-tight mb-3">
+          DGX Spark is <span className="text-nvidia-green">Resting</span>
+        </h2>
+
+        <p className="text-foreground/50 max-w-xs mx-auto mb-6 leading-relaxed text-sm">
+          The private DGX hardware is offline right now. Check again when the tunnel is back online.
+        </p>
+
+        <button
+          onClick={onRetry}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-nvidia-green/5 hover:bg-nvidia-green/10 border border-nvidia-green/20 rounded-lg transition-all text-sm font-semibold text-nvidia-green group shadow-md shadow-nvidia-green/5 cursor-pointer"
+        >
+          <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-700 ease-in-out" />
+          Wake Up Check
+        </button>
+      </motion.div>
+
+      <div className="mt-7 text-[10px] font-mono text-foreground/25 uppercase tracking-[0.16em]">
+        api.dgxspark.dev &bull; Cloudflare Tunnel Status: Paused
+      </div>
+    </div>
+  );
+}
+
 function ConfirmLogoutDialog({
   onConfirm,
   onCancel,
