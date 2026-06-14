@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X_API_KEY": xApiKey || "",
+        "X-API-Key": xApiKey || "",
       },
       body: JSON.stringify({
         model: model || "llama3.1:8b",

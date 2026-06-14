@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X_API_KEY": apiKey || "",
+        "X-API-Key": apiKey || "",
       },
       body: JSON.stringify({
         model: model || "llama3.1:8b",

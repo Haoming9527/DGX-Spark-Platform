@@ -11,7 +11,7 @@ export async function GET() {
     const response = await fetch(`${endpoint}/api/tags`, {
       method: "GET",
       headers: {
-        "X_API_KEY": apiKey || "",
+        "X-API-Key": apiKey || "",
       },
       // Short timeout to detect offline status quickly
       signal: AbortSignal.timeout(5000), 
