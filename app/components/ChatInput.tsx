@@ -136,12 +136,15 @@ export function ChatInput({
     }
   };
 
+  const chip =
+    "relative inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors sm:px-3";
+
   return (
-    <footer className="w-full max-w-4xl mx-auto absolute bottom-0 left-1/2 -translate-x-1/2 bg-gradient-to-t from-background via-background/90 to-transparent px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-6 sm:p-4 sm:pt-10 pointer-events-none">
-      <div className="flex flex-col gap-2 pointer-events-auto">
+    <footer className="pointer-events-none absolute bottom-0 left-1/2 w-full max-w-3xl -translate-x-1/2 bg-gradient-to-t from-background via-background/95 to-transparent px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-8 sm:px-4 sm:pt-12">
+      <div className="pointer-events-auto flex flex-col gap-2.5">
         <form
           onSubmit={handleSubmit}
-          className="relative flex flex-col gap-1.5 sm:gap-2 bg-panel border border-border p-2 rounded-2xl shadow-lg focus-within:ring-1 focus-within:ring-nvidia-green/50 transition-all font-sans"
+          className="relative flex flex-col gap-2 rounded-[28px] bg-panel p-2.5 shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_8px_30px_rgba(0,0,0,0.12)] ring-1 ring-border/60 transition-[box-shadow] focus-within:shadow-[0_0_0_1px_rgba(118,185,0,0.25),0_8px_30px_rgba(0,0,0,0.14)] font-sans dark:shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_12px_40px_rgba(0,0,0,0.45)]"
         >
           <textarea
             value={input + (interimTranscript ? (input.endsWith(" ") ? "" : " ") + interimTranscript : "")}
@@ -156,52 +159,50 @@ export function ChatInput({
                 handleSubmit(e);
               }
             }}
-            placeholder={isListening ? "Listening..." : "Send a message to DGX Spark..."}
-            className={`w-full max-h-32 sm:max-h-48 min-h-11 sm:min-h-[52px] bg-transparent resize-none outline-none text-sm sm:text-base text-foreground py-2 px-3 ${isListening ? "text-nvidia-green/80" : ""}`}
+            placeholder={isListening ? "Listening…" : "Message DGX Spark…"}
+            className={`max-h-40 min-h-[52px] w-full resize-none bg-transparent px-3.5 py-2.5 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-foreground/35 sm:max-h-52 ${isListening ? "text-nvidia-green/90" : ""}`}
             rows={1}
             readOnly={isListening}
           />
-          
-          <div className="flex items-center justify-between gap-2 pb-1 px-1">
-            <div className="flex min-w-0 items-center gap-1.5 font-sans">
 
-              
+          <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
+            <div className="flex min-w-0 items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setUseReasoning(!useReasoning)}
-                className={`flex h-8 items-center gap-1.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-colors border ${
-                  useReasoning 
-                  ? "bg-purple-500/10 text-purple-400 border-purple-500/30" 
-                  : "bg-background text-foreground/50 border-border hover:bg-panel-hover"
+                className={`${chip} ${
+                  useReasoning
+                    ? "bg-nvidia-green/12 text-nvidia-green ring-1 ring-nvidia-green/25"
+                    : "text-foreground/50 ring-1 ring-border/80 hover:bg-foreground/[0.04] hover:text-foreground/75"
                 }`}
                 title="Toggle Reasoning Mode"
               >
-                <BrainCircuit className="w-3.5 h-3.5" />
+                <BrainCircuit className="h-3.5 w-3.5" strokeWidth={1.75} />
                 <span className="hidden min-[380px]:inline">Thinking</span>
               </button>
 
               <button
                 type="button"
                 onClick={toggleListening}
-                className={`flex h-8 items-center gap-1.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-colors border relative ${
-                  isListening 
-                  ? "bg-red-500/10 text-red-500 border-red-500/30" 
-                  : "bg-background text-foreground/50 border-border hover:bg-panel-hover"
+                className={`${chip} ${
+                  isListening
+                    ? "bg-red-500/10 text-red-500 ring-1 ring-red-500/25"
+                    : "text-foreground/50 ring-1 ring-border/80 hover:bg-foreground/[0.04] hover:text-foreground/75"
                 }`}
                 title={isListening ? "Stop Recording" : "Voice Input"}
               >
                 {isListening ? (
                   <>
-                    <MicOff className="w-3.5 h-3.5" />
-                    <span className="hidden min-[380px]:inline">Recording...</span>
-                    <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                       <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    <MicOff className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    <span className="hidden min-[380px]:inline">Recording</span>
+                    <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
                     </span>
                   </>
                 ) : (
                   <>
-                    <Mic className="w-3.5 h-3.5" />
+                    <Mic className="h-3.5 w-3.5" strokeWidth={1.75} />
                     <span className="hidden min-[380px]:inline">Voice</span>
                   </>
                 )}
@@ -213,37 +214,37 @@ export function ChatInput({
                 <button
                   type="button"
                   onClick={stopGeneration}
-                  className="h-10 w-10 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors flex items-center justify-center"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:opacity-90"
                   title="Stop generation"
                 >
-                  <StopCircle className="w-5 h-5" />
+                  <StopCircle className="h-4 w-4" strokeWidth={1.75} />
                 </button>
               ) : (
                 <button
                   type="submit"
                   disabled={!input.trim() || isLoading || !selectedModel}
-                  className="h-10 w-10 rounded-xl bg-nvidia-green text-background hover:bg-nvidia-green-light disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-[0_0_15px_rgba(118,185,0,0.3)] flex items-center justify-center"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-nvidia-green text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
                   title="Send Message"
                 >
-                  <Send className="w-5 h-5" />
+                  <Send className="h-4 w-4" strokeWidth={2} />
                 </button>
               )}
             </div>
           </div>
         </form>
-        <div className="hidden sm:block text-center text-xs text-foreground/40 pb-2 opacity-70 hover:opacity-100 transition-all duration-300">
-           <span className="text-nvidia-green font-semibold">Chat won&apos;t be saved</span>
-           <span className="mx-2 text-foreground/20">•</span>
-           LLMs running on private Nvidia DGX Spark
-           <span className="mx-2 text-foreground/20">•</span>
-           <a 
-             href="https://github.com/Haoming9527/DGX-Spark-Platform" 
-             target="_blank" 
-             rel="noopener noreferrer"
-             className="hover:text-nvidia-green transition-colors underline decoration-foreground/20 underline-offset-2"
-           >
-             View Git Repo
-           </a>
+        <div className="hidden pb-1 text-center text-[11px] text-foreground/35 sm:block">
+          <span>Chat isn&apos;t saved</span>
+          <span className="mx-1.5 text-foreground/20">·</span>
+          Not affiliated with NVIDIA
+          <span className="mx-1.5 text-foreground/20">·</span>
+          <a
+            href="https://github.com/Haoming9527/DGX-Spark-Platform"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline decoration-foreground/20 underline-offset-2 transition-colors hover:text-foreground/60"
+          >
+            GitHub
+          </a>
         </div>
       </div>
     </footer>

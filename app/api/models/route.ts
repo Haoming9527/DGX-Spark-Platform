@@ -1,35 +1,82 @@
 import { NextResponse } from "next/server";
+import { gatewayAuthHeaders, requireInferenceGateway } from "../../../lib/inferenceGateway";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
+type CapacityStatus = {
+  status?: string;
+};
+
 export async function GET() {
   try {
-    const apiKey = process.env["X_API_KEY"];
-    const endpoint = process.env["API_ENDPOINT"];
+    const { base, apiKey } = requireInferenceGateway();
+    const headers = gatewayAuthHeaders(apiKey);
 
-    const response = await fetch(`${endpoint}/api/tags`, {
+    const statusRes = await fetch(`${base}/status`, {
       method: "GET",
-      headers: {
-        "X-API-Key": apiKey || "",
-      },
-      // Short timeout to detect offline status quickly
-      signal: AbortSignal.timeout(5000), 
+      headers,
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!statusRes.ok) {
+      if ([530, 503, 502, 401].includes(statusRes.status)) {
+        return NextResponse.json(
+          { error: "OFFLINE", message: "DGX Spark gateway is unreachable." },
+          { status: 200 }
+        );
+      }
+      return NextResponse.json({ error: statusRes.statusText }, { status: statusRes.status });
+    }
+
+    const capacity = (await statusRes.json()) as CapacityStatus;
+    if (capacity.status === "sleeping") {
+      return NextResponse.json(
+        {
+          error: "SLEEPING",
+          message: "No AI servers are online.",
+          status: capacity,
+        },
+        { status: 200 }
+      );
+    }
+
+    const response = await fetch(`${base}/olla/ollama/api/tags`, {
+      method: "GET",
+      headers,
+      signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) {
-      // Handle Cloudflare Tunnel error (530) or other upstream issues
-      if (response.status === 530 || response.status === 503 || response.status === 502) {
-        return NextResponse.json({ error: "OFFLINE", message: "DGX Spark is unreachable." }, { status: 200 });
+      if ([530, 503, 502, 401].includes(response.status)) {
+        return NextResponse.json(
+          { error: "SLEEPING", message: "No AI servers are available." },
+          { status: 200 }
+        );
       }
       return NextResponse.json({ error: response.statusText }, { status: response.status });
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    const models = Array.isArray(data?.models) ? data.models : [];
+    if (models.length === 0) {
+      return NextResponse.json(
+        {
+          error: "SLEEPING",
+          message: "No models available — AI servers may be offline.",
+          models: [],
+        },
+        { status: 200 }
+      );
+    }
+
+    return NextResponse.json({ ...data, models });
   } catch (error: unknown) {
-    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-      return NextResponse.json({ error: "OFFLINE", message: "DGX Spark connection timed out." }, { status: 200 });
+    if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      return NextResponse.json(
+        { error: "OFFLINE", message: "DGX Spark gateway connection timed out." },
+        { status: 200 }
+      );
     }
     const errorMsg = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: "OFFLINE", message: errorMsg }, { status: 200 });

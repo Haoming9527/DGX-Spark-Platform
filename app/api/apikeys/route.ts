@@ -1,18 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { query } from "../../../lib/db";
+import { prisma } from "../../../lib/prisma";
 import { getSession } from "../../../lib/auth";
 
 function hashKey(rawKey: string): string {
   return crypto.createHash("sha256").update(rawKey).digest("hex");
 }
 
-// RFC-4122 UUID format validator — prevents malformed id values from
-// ever reaching the database, even though the driver uses parameterized
-// queries. Defense in depth.
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// GET: List API keys for current user
+type KeyListRow = {
+  id: string;
+  name: string;
+  key_prefix: string;
+  created_at: Date;
+  last_used_at: Date | null;
+  total_tokens: number;
+  total_requests: number;
+};
+
 export async function GET(req: NextRequest) {
   try {
     const session = getSession(req);
@@ -20,8 +26,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const result = await query(
-      `SELECT
+    const keys = await prisma.$queryRaw<KeyListRow[]>`
+      SELECT
           k.id,
           k.name,
           k.key_prefix,
@@ -31,13 +37,12 @@ export async function GET(req: NextRequest) {
           COALESCE(COUNT(u.id), 0)::int AS total_requests
        FROM api_keys k
        LEFT JOIN api_key_usage u ON u.key_id = k.id
-       WHERE k.user_id = $1
+       WHERE k.user_id = ${session.userId}::uuid
        GROUP BY k.id
-       ORDER BY k.created_at DESC`,
-      [session.userId]
-    );
+       ORDER BY k.created_at DESC
+    `;
 
-    return NextResponse.json({ keys: result.rows });
+    return NextResponse.json({ keys });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal server error";
     console.error("GET api_keys error:", error);
@@ -45,7 +50,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST: Create a new API key
 export async function POST(req: NextRequest) {
   try {
     const session = getSession(req);
@@ -57,18 +61,17 @@ export async function POST(req: NextRequest) {
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Key name is required." }, { status: 400 });
     }
-    // Strip any control / non-printable characters from the name
     const safeName = name.trim().replace(/[\x00-\x1F\x7F]/g, "");
     if (safeName.length === 0 || safeName.length > 100) {
-      return NextResponse.json({ error: "Key name must be between 1 and 100 printable characters." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Key name must be between 1 and 100 printable characters." },
+        { status: 400 }
+      );
     }
 
-    // Limit: max 20 keys per user
-    const countResult = await query(
-      "SELECT COUNT(*) AS cnt FROM api_keys WHERE user_id = $1",
-      [session.userId]
-    );
-    const currentCount = parseInt(countResult.rows[0]?.cnt || "0", 10);
+    const currentCount = await prisma.apiKey.count({
+      where: { userId: session.userId },
+    });
     if (currentCount >= 20) {
       return NextResponse.json(
         { error: "Maximum of 20 API keys reached. Please revoke an existing key first." },
@@ -76,25 +79,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Generate high-entropy key
     const rawKey = `dgx_sk_${crypto.randomBytes(24).toString("hex")}`;
     const keyHash = hashKey(rawKey);
-    // First 20 chars for display identification (e.g. "dgx_sk_1a2b3c4d5e6f")
     const keyPrefix = rawKey.substring(0, 20);
 
-    const result = await query(
-      `INSERT INTO api_keys (user_id, key_hash, key_prefix, name)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, name, key_prefix, created_at, last_used_at`,
-      [session.userId, keyHash, keyPrefix, safeName]
-    );
+    const key = await prisma.apiKey.create({
+      data: {
+        userId: session.userId,
+        keyHash,
+        keyPrefix,
+        name: safeName,
+      },
+      select: {
+        id: true,
+        name: true,
+        keyPrefix: true,
+        createdAt: true,
+        lastUsedAt: true,
+      },
+    });
 
-    // Return the raw key ONLY here — it is never stored in plaintext anywhere else.
     return NextResponse.json({
       message: "API Key created. Copy it now — it will not be shown again.",
       rawKey,
       key: {
-        ...result.rows[0],
+        id: key.id,
+        name: key.name,
+        key_prefix: key.keyPrefix,
+        created_at: key.createdAt,
+        last_used_at: key.lastUsedAt,
         total_tokens: 0,
         total_requests: 0,
       },
@@ -106,7 +119,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// DELETE: Revoke an API key
 export async function DELETE(req: NextRequest) {
   try {
     const session = getSession(req);
@@ -119,23 +131,18 @@ export async function DELETE(req: NextRequest) {
     if (!id) {
       return NextResponse.json({ error: "Key ID is required." }, { status: 400 });
     }
-    // Validate UUID format before touching the DB (defense-in-depth on top
-    // of the parameterized query — rejects obviously malformed values early).
     if (!UUID_REGEX.test(id)) {
       return NextResponse.json({ error: "Invalid key ID format." }, { status: 400 });
     }
 
-    const result = await query(
-      "DELETE FROM api_keys WHERE id = $1 AND user_id = $2 RETURNING id",
-      [id, session.userId]
-    );
+    const deleted = await prisma.apiKey.deleteMany({
+      where: { id, userId: session.userId },
+    });
 
-    if (result.rows.length === 0) {
+    if (deleted.count === 0) {
       return NextResponse.json({ error: "API Key not found or access denied." }, { status: 404 });
     }
 
-    // 204 No Content is the correct HTTP status for a successful DELETE
-    // with no response body to return.
     return new NextResponse(null, { status: 204 });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal server error";
@@ -144,7 +151,6 @@ export async function DELETE(req: NextRequest) {
   }
 }
 
-// PATCH: Rename an API key
 export async function PATCH(req: NextRequest) {
   try {
     const session = getSession(req);
@@ -163,22 +169,25 @@ export async function PATCH(req: NextRequest) {
 
     const safeName = name.trim().replace(/[\x00-\x1F\x7F]/g, "");
     if (safeName.length === 0 || safeName.length > 100) {
-      return NextResponse.json({ error: "Key name must be between 1 and 100 printable characters." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Key name must be between 1 and 100 printable characters." },
+        { status: 400 }
+      );
     }
 
-    const result = await query(
-      `UPDATE api_keys
-       SET name = $1
-       WHERE id = $2 AND user_id = $3
-       RETURNING id, name`,
-      [safeName, id, session.userId]
-    );
+    const updated = await prisma.apiKey.updateMany({
+      where: { id, userId: session.userId },
+      data: { name: safeName },
+    });
 
-    if (result.rows.length === 0) {
+    if (updated.count === 0) {
       return NextResponse.json({ error: "API Key not found or access denied." }, { status: 404 });
     }
 
-    return NextResponse.json({ message: "API Key renamed successfully.", key: result.rows[0] });
+    return NextResponse.json({
+      message: "API Key renamed successfully.",
+      key: { id, name: safeName },
+    });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal server error";
     console.error("PATCH api_keys error:", error);

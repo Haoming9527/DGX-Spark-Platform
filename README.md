@@ -14,7 +14,8 @@ Built with **Next.js 16**, **Tailwind CSS v4**, and **Framer Motion**, this plat
 - **🎫 Timing-Safe Invite Codes**: Restricts user registration via a constant-time referral validation check (`crypto.timingSafeEqual`) to block length-based timing attacks.
 - **🔑 Developer API Keys**: Generate, rename, and revoke custom API keys (e.g., `dgx_sk_...`) from a private dashboard page.
 - **📊 Real-time Telemetry & Timeline**: Visualizes token and request volumes per key across dynamic intervals (Past 1h, 24h, 7d, 30d). Drill-down views display interactive SVG lines (Requests vs. Success Rates) and stacked bar charts for status code errors (400, 403, 404).
-- **🔌 OpenAI-Compatible API Gateway**: Exposes a standard endpoint (`/v1/chat/completions`) that routes queries directly to Ollama. Compatible with the official `openai` python/node libraries.
+- **🔌 OpenAI-Compatible API**: Public inference at `https://api.dgxspark.dev/v1` (Olla gateway). Dashboard stays on `www.dgxspark.dev`.
+- **🛰️ Multi-node inference (Olla)**: [`docs/multi-node-inference.md`](docs/multi-node-inference.md) — public API `https://api.dgxspark.dev/v1`.
 - **🎨 Nvidia-Inspired UI**: Premium dark/light themes with signature neon-green accents, glassmorphism, and smooth Framer Motion transitions.
 - **💤 DGX Offline Mode**: Intelligent handling of backend connectivity. If the DGX hardware is resting, the platform gracefully enters a "Resting" state.
 
@@ -22,67 +23,66 @@ Built with **Next.js 16**, **Tailwind CSS v4**, and **Framer Motion**, this plat
 
 ## 🏗️ Backend Architecture
 
-The DGX Spark Platform follows a secure, high-performance network topology to bridge your local DGX hardware with the public web:
+Control plane (Next.js) and inference data plane (Olla) are separate:
 
 ```mermaid
 graph TD
-    User([Internet User]) -- Route: /apikeys --> NextJS[Next.js App]
-    User -- Route: /v1/chat/completions --> Gateway[OpenAI Gateway]
-    NextJS -- Session Verification --> Auth[JWT Cookie / bcryptjs]
-    NextJS -- DB Query --> DB[(Neon PostgreSQL DB)]
-    Gateway -- Hashed Key Lookup --> DB
-    Gateway -- Authenticated Request --> CF[Cloudflare Network]
-    CF -- Tunnel --> CT[cloudflared tunnel]
-    CT -- HTTP --> Caddy[Caddy Reverse Proxy]
-    Caddy -- Auth Check --> Ollama[Ollama Service]
-    Ollama -- Inference --> DGX[Nvidia DGX Hardware]
+    Browser([Browser]) --> WWW[www.dgxspark.dev Next.js]
+    Client([OpenAI SDK]) --> API[api.dgxspark.dev]
+    WWW --> Neon[(Neon PostgreSQL)]
+    API --> FrontDoor[Go API front-door]
+    FrontDoor --> Neon
+    FrontDoor --> Olla[Olla gateway]
+    Olla --> SG[sg.dgxspark.dev node]
+    Olla --> N[node N]
+    SG --> Ollama[Ollama]
+    N --> OllamaN[Ollama]
 ```
 
-1.  **Next.js Web Service**: Manages auth pages, dashboard UI panels, and routes completions queries.
-2.  **Neon PostgreSQL Database**: Safely houses user records and securely hashes API credentials using SHA-256 for validation.
-3.  **Cloudflare Tunnel**: Securely exposes the local environment.
-4.  **Caddy Reverse Proxy**: Handles incoming HTTP requests, performs strict **X_API_KEY** header verification, and routes traffic.
-5.  **Local Isolation**: The Ollama instance and DGX hardware remain isolated from direct public access, ensuring maximum security.
+1. **Next.js (Vercel)** — dashboard, login, API key CRUD, usage charts at `www.dgxspark.dev`.
+2. **Go API + Olla (GCP e2-micro / any VPS)** — validate `dgx_sk_*`, model-aware routing, streaming at `api.dgxspark.dev/v1`.
+3. **Inference nodes** — Ollama behind Cloudflare Tunnel + Caddy (`X-API-Key`), starting with `sg.dgxspark.dev`.
+4. **Neon** — shared users / API keys / usage (hashed keys only).
+
+See [`docs/multi-node-inference.md`](docs/multi-node-inference.md).
 
 ---
 
 ## 🛠️ Tech Stack
 
 - **Frontend**: [Next.js 16](https://nextjs.org/) (App Router), [React 19](https://react.dev/)
-- **Database**: [Neon Serverless PostgreSQL](https://neon.tech/)
+- **Database**: [Neon Serverless PostgreSQL](https://neon.tech/) via **Prisma** (Next.js) + raw SQL (Go gateway API)
 - **Auth**: [bcryptjs](https://github.com/dcodeIO/bcrypt.js) (Password Hashing), [jsonwebtoken](https://github.com/auth0/node-jsonwebtoken) (Session Tokens)
+- **Inference gateway**: [Olla](https://thushan.github.io/olla/) + thin Go API-key front-door
 - **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
 - **Animations**: [Framer Motion](https://www.framer.com/motion/)
 - **Icons**: [Lucide React](https://lucide.dev/)
 - **Markdown**: [React-Markdown](https://github.com/remarkjs/react-markdown) + [Remark-GFM](https://github.com/remarkjs/remark-gfm)
 - **Code Highlighting**: [React-Syntax-Highlighter](https://github.com/react-syntax-highlighter/react-syntax-highlighter) (Prism)
-- **Backend API**: [Ollama](https://ollama.com/) (Private Instance)
-- **Deployment**: [Cloudflare Tunnels](https://www.cloudflare.com/products/tunnel/) for secure remote access to local hardware.
+- **Backend API**: [Ollama](https://ollama.com/) on DGX Spark nodes
+- **Deployment**: Vercel (www) + GCP Always Free e2-micro or any VPS (api) + [Cloudflare Tunnel](https://www.cloudflare.com/products/tunnel/) for `api.dgxspark.dev`
 
 ---
 
 ## ⚙️ Configuration
 
-Create a `.env` file in the root directory with the following variables:
+Copy [`env.example`](env.example) to `.env` in the project root:
 
 ```env
-# Upstream Inference Settings
-API_ENDPOINT=https://your-api-endpoint
-X_API_KEY=your-secret-api-key
-
-# Database Connection Pool
-DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
-
-# Authentication & Access Settings
+DATABASE_URL=postgresql://user:password@host-pooler/dbname?sslmode=require
+# DIRECT_URL=postgresql://user:password@host/dbname?sslmode=require   # optional, Prisma CLI
 JWT_SECRET=your-secure-jwt-signing-secret
 REFERRAL_CODE=your-secret-invite-signup-code
+
+# UI chat via Olla gateway (not direct to a DGX node)
+INFERENCE_GATEWAY_URL=https://api.dgxspark.dev
+INFERENCE_GATEWAY_API_KEY=dgx_chat_your_platform_chat_key
 ```
 
-- `API_ENDPOINT`: The URL of your Ollama instance (exposed via Cloudflare or local network).
-- `X_API_KEY`: Your secret key for authenticated requests to the proxy.
-- `DATABASE_URL`: Connection string connecting to your Neon serverless PostgreSQL database.
-- `JWT_SECRET`: High-entropy key for cryptographically signing session cookies.
-- `REFERRAL_CODE`: Enforced token code that users must supply during registration.
+- `INFERENCE_GATEWAY_URL`: Public API+Olla gateway.
+- `INFERENCE_GATEWAY_API_KEY`: Platform chat key (`dgx_chat_…`) — same as gateway `CHAT_SERVICE_KEY`. Not a user dashboard key.
+- Node secrets (`SG_API_*`) live only on the VPS — see [`gateway/env.example`](gateway/env.example).
+- SDK clients use `base_url=https://api.dgxspark.dev/v1` with a `dgx_sk_*` key from the dashboard.
 
 ---
 

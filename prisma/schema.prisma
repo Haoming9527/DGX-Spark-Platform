@@ -1,0 +1,53 @@
+// Prisma schema for Next.js (Neon). Must stay aligned with schema.sql / Go API SQL.
+// Do not run destructive migrate against prod — tables already exist.
+// CLI uses DIRECT_URL via prisma.config.ts; app uses DATABASE_URL (pooled) + Neon adapter.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username     String   @unique @db.VarChar(50)
+  email        String   @unique @db.VarChar(255)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  referralCode String   @map("referral_code") @db.VarChar(100)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  apiKeys      ApiKey[]
+
+  @@map("users")
+}
+
+model ApiKey {
+  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String        @map("user_id") @db.Uuid
+  keyHash    String        @unique @map("key_hash") @db.VarChar(64)
+  keyPrefix  String        @map("key_prefix") @db.VarChar(20)
+  name       String        @db.VarChar(100)
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt DateTime?     @map("last_used_at") @db.Timestamptz(6)
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usage      ApiKeyUsage[]
+
+  @@index([keyHash], map: "idx_api_keys_hash")
+  @@map("api_keys")
+}
+
+model ApiKeyUsage {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  keyId            String   @map("key_id") @db.Uuid
+  timestamp        DateTime @default(now()) @db.Timestamptz(6)
+  tokens           BigInt   @default(0)
+  promptTokens     BigInt   @default(0) @map("prompt_tokens")
+  completionTokens BigInt   @default(0) @map("completion_tokens")
+  statusCode       Int      @map("status_code")
+  apiKey           ApiKey   @relation(fields: [keyId], references: [id], onDelete: Cascade)
+
+  @@index([keyId, timestamp(sort: Desc)], map: "idx_api_key_usage_key_timestamp")
+  @@map("api_key_usage")
+}

@@ -4,7 +4,7 @@ import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, BookOpen, Check, ChevronRight, Code, Copy, KeyRound, ListChecks, Server, ShieldCheck, Terminal } from "lucide-react";
 
-const baseUrl = "https://www.dgxspark.dev";
+const baseUrl = "https://api.dgxspark.dev";
 
 const sections = [
   { id: "overview", label: "Overview" },
@@ -25,7 +25,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="llama3.1:8b",
+    model="qwen3.6:35b-a3b",
     messages=[
         {"role": "user", "content": "Explain how AI works in a few words"}
     ],
@@ -40,7 +40,7 @@ const client = new OpenAI({
 });
 
 const response = await client.chat.completions.create({
-  model: "llama3.1:8b",
+  model: "qwen3.6:35b-a3b",
   messages: [
     { role: "user", content: "Explain how AI works in a few words" },
   ],
@@ -64,7 +64,7 @@ func main() {
   )
 
   response, _ := client.Chat.Completions.New(context.TODO(), openai.ChatCompletionNewParams{
-    Model: "llama3.1:8b",
+    Model: "qwen3.6:35b-a3b",
     Messages: []openai.ChatCompletionMessageParamUnion{
       openai.UserMessage("Explain how AI works in a few words"),
     },
@@ -78,7 +78,7 @@ func main() {
     .build();
 
 ChatCompletionCreateParams params = ChatCompletionCreateParams.builder()
-    .model("llama3.1:8b")
+    .model("qwen3.6:35b-a3b")
     .addUserMessage("Explain how AI works in a few words")
     .build();
 
@@ -87,7 +87,7 @@ System.out.println(response.choices().get(0).message().content().orElse(""));`,
   "C#": `using OpenAI.Chat;
 
 ChatClient client = new(
-    model: "llama3.1:8b",
+    model: "qwen3.6:35b-a3b",
     credential: new ApiKeyCredential("dgx_sk_your_key_here"),
     options: new OpenAIClientOptions
     {
@@ -104,7 +104,7 @@ Console.WriteLine(response.Content[0].Text);`,
   -H "Authorization: Bearer dgx_sk_your_key_here" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "llama3.1:8b",
+    "model": "qwen3.6:35b-a3b",
     "messages": [
       {
         "role": "user",
@@ -183,7 +183,7 @@ export function DocsView() {
           id="overview"
           icon={<BookOpen className="h-5 w-5 text-nvidia-green" />}
           title="Overview"
-          description="DGX Spark exposes an OpenAI-compatible chat completions API. Use it with your API key, choose an active model, and send chat messages to the /v1 endpoint."
+          description="DGX Spark exposes an OpenAI-compatible chat completions API at api.dgxspark.dev. Use your dgx_sk_ key, pick a model, and send messages — routing across Sparks is handled by the gateway."
         >
           <CopyField
             label="Base URL"

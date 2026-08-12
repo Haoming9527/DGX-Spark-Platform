@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { gatewayAuthHeaders, requireInferenceGateway } from "../../../lib/inferenceGateway";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -6,56 +7,46 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const { messages, model, useReasoning } = await req.json();
+    const { base, apiKey } = requireInferenceGateway();
 
-    const apiKey = process.env["X_API_KEY"];
-    const endpoint = process.env["API_ENDPOINT"];
-
-    const BASE_SYSTEM_PROMPT = {
-      role: "system",
-      content: "You are the DGX Spark Platform AI, a local AI assistant running on NVIDIA DGX Spark. Your objective is to provide expert-level assistance with absolute precision. You are helpful, professional, and focus on delivering high-quality technical and general insights. Always ensure your responses are well-structured and concise."
-    };
-
-    const payloadMessages = [BASE_SYSTEM_PROMPT, ...messages];
-
-    // Handle Reasoning Injection
-    if (useReasoning) {
-      payloadMessages.splice(payloadMessages.length - 1, 0, {
-        role: "system",
-        content: "You are the DGX Spark Platform AI. When asked a question, please evaluate it and output your reasoning by surrounding your internal thoughts STRICTLY with <think> and </think> tags before you provide your final definitive answer. Doing so is highly critical."
-      });
-    }
-
-    const response = await fetch(`${endpoint}/api/chat`, {
+    const response = await fetch(`${base}/olla/ollama/api/chat`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKey || "",
-      },
+      headers: gatewayAuthHeaders(apiKey, { "Content-Type": "application/json" }),
       body: JSON.stringify({
-        model: model || "llama3.1:8b",
-        messages: payloadMessages,
+        model: model || "qwen3.6:35b-a3b",
+        messages,
         stream: true,
+        think: Boolean(useReasoning),
       }),
-      signal: AbortSignal.timeout(180000), // 3-minute timeout
+      signal: AbortSignal.timeout(180000),
     });
 
     if (!response.ok) {
-      if (response.status === 530 || response.status === 503 || response.status === 502) {
-        return new Response(JSON.stringify({ error: "OFFLINE", message: "DGX Spark is currently offline." }), { 
-          status: 200,
-          headers: { "Content-Type": "application/json" }
-        });
+      const upstream = await response.text();
+      if ([530, 502, 401].includes(response.status)) {
+        return new Response(
+          JSON.stringify({ error: "OFFLINE", message: "DGX Spark gateway is currently unavailable." }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
       }
-      console.error(`Ollama Error: ${response.status}`, await response.text());
+      if (
+        response.status === 503 ||
+        /NO_ENDPOINTS|no healthy endpoints|service_unavailable/i.test(upstream)
+      ) {
+        return new Response(
+          JSON.stringify({ error: "SLEEPING", message: "No AI servers are online." }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      console.error(`Gateway Error: ${response.status}`, upstream);
       return new Response(`Error from upstream: ${response.statusText}`, { status: response.status });
     }
 
-    // Return the readable stream directly
     return new Response(response.body, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
+        Connection: "keep-alive",
       },
     });
   } catch (error: unknown) {

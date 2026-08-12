@@ -1,4 +1,6 @@
 -- Database schema for DGX Spark Platform
+-- Next.js uses Prisma (`prisma/schema.prisma`) against these tables.
+-- Go gateway auth keeps using raw SQL against the same Neon DB — keep both in sync.
 
 -- 1. Users Table
 CREATE TABLE IF NOT EXISTS users (

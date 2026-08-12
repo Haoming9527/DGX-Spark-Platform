@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { query } from "../../../../lib/db";
+import { prisma } from "../../../../lib/prisma";
 import { hashPassword, generateToken } from "../../../../lib/auth";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -10,7 +10,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { username, email, password, referralCode } = body;
 
-    // --- Input presence check ---
     if (!username || !email || !password || !referralCode) {
       return NextResponse.json(
         { error: "Username, email, password, and referral code are all required fields." },
@@ -18,7 +17,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // --- Input length limits (prevent bcrypt DoS and DB overflow) ---
     if (typeof username !== "string" || username.trim().length < 3 || username.trim().length > 50) {
       return NextResponse.json({ error: "Username must be between 3 and 50 characters." }, { status: 400 });
     }
@@ -32,25 +30,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid referral code." }, { status: 400 });
     }
 
-    // --- Email format validation ---
     if (!EMAIL_REGEX.test(email.trim())) {
       return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 });
     }
 
-    // --- Referral code check (timing-safe to prevent side-channel attacks) ---
     const systemReferral = process.env.REFERRAL_CODE;
     if (!systemReferral) {
       console.warn("REFERRAL_CODE is not set in .env. Denying signup.");
-      return NextResponse.json(
-        { error: "Signup is currently disabled." },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: "Signup is currently disabled." }, { status: 503 });
     }
 
     let referralValid = false;
     try {
-      // SECURITY: timingSafeEqual requires same-length buffers.
-      // Pad/hash both to equal lengths to avoid length-based timing leaks.
       const a = Buffer.from(crypto.createHash("sha256").update(referralCode).digest("hex"));
       const b = Buffer.from(crypto.createHash("sha256").update(systemReferral).digest("hex"));
       referralValid = crypto.timingSafeEqual(a, b);
@@ -68,28 +59,31 @@ export async function POST(req: NextRequest) {
     const cleanUsername = username.trim();
     const cleanEmail = email.trim().toLowerCase();
 
-    // --- Duplicate check ---
-    const existingUser = await query(
-      "SELECT id FROM users WHERE username = $1 OR email = $2 LIMIT 1",
-      [cleanUsername, cleanEmail]
-    );
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [{ username: cleanUsername }, { email: cleanEmail }],
+      },
+      select: { id: true },
+    });
 
-    if (existingUser.rows.length > 0) {
+    if (existingUser) {
       return NextResponse.json(
         { error: "Username or email is already registered." },
         { status: 400 }
       );
     }
 
-    // SECURITY: hashPassword is now async — does not block the event loop.
     const passwordHash = await hashPassword(password);
 
-    const insertResult = await query(
-      "INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username, email",
-      [cleanUsername, cleanEmail, passwordHash]
-    );
-
-    const newUser = insertResult.rows[0];
+    const newUser = await prisma.user.create({
+      data: {
+        username: cleanUsername,
+        email: cleanEmail,
+        passwordHash,
+        referralCode: referralCode.trim().slice(0, 100),
+      },
+      select: { id: true, username: true, email: true },
+    });
 
     const token = generateToken({
       userId: newUser.id,
@@ -110,7 +104,7 @@ export async function POST(req: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
 

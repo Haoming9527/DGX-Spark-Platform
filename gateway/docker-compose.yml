@@ -1,0 +1,36 @@
+services:
+  olla:
+    image: ghcr.io/thushan/olla:v0.0.28
+    container_name: dgx-olla
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "${OLLA_PORT:-40114}:40114"
+    environment:
+      SG_API_ENDPOINT: ${SG_API_ENDPOINT}
+      SG_API_KEY: ${SG_API_KEY}
+    volumes:
+      - ./config/olla.yaml:/config/olla.yaml:ro
+    command: ["--config", "/config/olla.yaml"]
+
+  api:
+    build: ./api
+    container_name: dgx-api
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "${API_PORT:-8080}:8080"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      CHAT_SERVICE_KEY: ${CHAT_SERVICE_KEY}
+      OLLA_URL: http://olla:40114
+      API_LISTEN: ":8080"
+      SYSTEM_PROMPT_FILE: /config/system-prompt.md
+    volumes:
+      - ./system-prompt.md:/config/system-prompt.md:ro
+    depends_on:
+      - olla

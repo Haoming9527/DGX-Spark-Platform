@@ -8,11 +8,11 @@ export default function DocumentationPage() {
     <div className="min-h-screen bg-background text-foreground font-sans">
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md px-4 md:px-8 py-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-nvidia-green/10 border border-nvidia-green/20 flex items-center justify-center overflow-hidden p-0.5">
-              <Image src="/logo.svg" alt="Logo" width={28} height={28} className="object-contain" />
-            </div>
-            <span className="font-bold text-sm">DGX Spark<span className="text-nvidia-green"> Docs</span></span>
+          <Link href="/" className="inline-flex items-center gap-2.5 transition-opacity hover:opacity-90">
+            <Image src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7 object-contain" />
+            <span className="text-[15px] font-semibold tracking-tight">
+              DGX Spark <span className="font-medium text-foreground/45">Docs</span>
+            </span>
           </Link>
         </div>
 
@@ -28,7 +28,9 @@ export default function DocumentationPage() {
       <main className="max-w-7xl mx-auto p-6 md:p-8 space-y-6">
         <div className="border-b border-border/50 pb-4">
           <h1 className="text-2xl font-bold tracking-tight">Developer Documentation</h1>
-          <p className="text-sm text-foreground/45 mt-1">API base URL, quickstart, supported models, usage, and terms.</p>
+          <p className="text-sm text-foreground/50 mt-1">
+            OpenAI-compatible API for models on DGX Spark.
+          </p>
         </div>
         <DocsView />
       </main>

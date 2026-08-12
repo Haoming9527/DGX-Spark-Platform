@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "../../../../lib/db";
+import { prisma } from "../../../../lib/prisma";
 import { comparePassword, hashPassword, generateToken, getSession } from "../../../../lib/auth";
 
-// GET: Check current session status.
 export async function GET(req: NextRequest) {
   try {
     const session = getSession(req);
@@ -16,7 +15,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST: Sign in
 export async function POST(req: NextRequest) {
   try {
     const { identifier, password } = await req.json();
@@ -37,35 +35,36 @@ export async function POST(req: NextRequest) {
 
     const clean = identifier.trim();
 
-    const result = await query(
-      "SELECT id, username, email, password_hash FROM users WHERE username = $1 OR email = $2 LIMIT 1",
-      [clean, clean.toLowerCase()]
-    );
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [{ username: clean }, { email: clean.toLowerCase() }],
+      },
+      select: { id: true, username: true, email: true, passwordHash: true },
+    });
 
-    if (result.rows.length === 0) {
+    if (!user) {
       return NextResponse.json(
         { error: "Invalid username/email or password." },
         { status: 401 }
       );
     }
 
-    const user = result.rows[0];
-
-    const isBcrypt = typeof user.password_hash === "string" &&
-      /^\$2[ayb]\$[0-9]{2}\$[A-Za-z0-9./]{53}$/.test(user.password_hash);
+    const isBcrypt =
+      typeof user.passwordHash === "string" &&
+      /^\$2[ayb]\$[0-9]{2}\$[A-Za-z0-9./]{53}$/.test(user.passwordHash);
 
     let isMatch = false;
     if (isBcrypt) {
-      isMatch = await comparePassword(password, user.password_hash);
+      isMatch = await comparePassword(password, user.passwordHash);
     } else {
-      isMatch = (password === user.password_hash);
+      isMatch = password === user.passwordHash;
       if (isMatch) {
         try {
           const hashed = await hashPassword(password);
-          await query(
-            "UPDATE users SET password_hash = $1 WHERE id = $2",
-            [hashed, user.id]
-          );
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { passwordHash: hashed },
+          });
           console.log(`Auto-hashed plaintext password reset for user ${user.username}`);
         } catch (err) {
           console.error("Failed to update plaintext password reset:", err);
@@ -99,7 +98,7 @@ export async function POST(req: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, 
+      maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
 
@@ -111,7 +110,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// DELETE: Log out — clears the JWT cookie
 export async function DELETE() {
   const response = NextResponse.json({ message: "Logout successful" });
   response.cookies.set("token", "", {

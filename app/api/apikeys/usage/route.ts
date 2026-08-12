@@ -1,8 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "../../../../lib/db";
+import { prisma } from "../../../../lib/prisma";
 import { getSession } from "../../../../lib/auth";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type UsageRow = {
+  usage_date: Date;
+  tokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  requests: number;
+  success_requests: number;
+  error_400: number;
+  error_403: number;
+  error_404: number;
+};
 
 export async function GET(req: NextRequest) {
   try {
@@ -25,22 +37,23 @@ export async function GET(req: NextRequest) {
 
     const days = daysParam ? parseInt(daysParam, 10) : 14;
     if (![7, 14, 30].includes(days)) {
-      return NextResponse.json({ error: "Invalid days parameter. Must be 7, 14, or 30." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid days parameter. Must be 7, 14, or 30." },
+        { status: 400 }
+      );
     }
 
-    // Verify key ownership
-    const keyVerify = await query(
-      "SELECT id FROM api_keys WHERE id = $1 AND user_id = $2 LIMIT 1",
-      [keyId, session.userId]
-    );
+    const owned = await prisma.apiKey.findFirst({
+      where: { id: keyId, userId: session.userId },
+      select: { id: true },
+    });
 
-    if (keyVerify.rows.length === 0) {
+    if (!owned) {
       return NextResponse.json({ error: "API Key not found or access denied." }, { status: 404 });
     }
 
-    // Query daily metrics using generate_series to fill gaps with zeros
-    const result = await query(
-      `SELECT 
+    const rows = await prisma.$queryRaw<UsageRow[]>`
+      SELECT
           d.date::date AS usage_date,
           COALESCE(SUM(u.tokens), 0)::float8 AS tokens,
           COALESCE(SUM(u.prompt_tokens), 0)::float8 AS prompt_tokens,
@@ -50,48 +63,36 @@ export async function GET(req: NextRequest) {
           COALESCE(COUNT(CASE WHEN u.status_code = 400 THEN 1 END), 0)::int AS error_400,
           COALESCE(COUNT(CASE WHEN u.status_code = 403 THEN 1 END), 0)::int AS error_403,
           COALESCE(COUNT(CASE WHEN u.status_code = 404 THEN 1 END), 0)::int AS error_404
-       FROM 
+       FROM
           generate_series(
-              CURRENT_DATE - INTERVAL '1 day' * ($2 - 1), 
-              CURRENT_DATE, 
-              '1 day'::interval
+              CURRENT_DATE - make_interval(days => ${days - 1}),
+              CURRENT_DATE,
+              INTERVAL '1 day'
           ) d(date)
-       LEFT JOIN 
-          api_key_usage u ON u.key_id = $1 AND u.timestamp::date = d.date::date
-       GROUP BY 
+       LEFT JOIN
+          api_key_usage u ON u.key_id = ${keyId}::uuid AND u.timestamp::date = d.date::date
+       GROUP BY
           d.date
-       ORDER BY 
-          d.date ASC`,
-      [keyId, days]
-    );
+       ORDER BY
+          d.date ASC
+    `;
 
-    interface DbUsageRow {
-      usage_date: string;
-      tokens: number;
-      prompt_tokens: number;
-      completion_tokens: number;
-      requests: number;
-      success_requests: number;
-      error_400: number;
-      error_403: number;
-      error_404: number;
-    }
-
-    const chartData = result.rows.map((row: DbUsageRow) => {
+    const chartData = rows.map((row) => {
       const dateObj = new Date(row.usage_date);
       const dateStr = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
       const requests = row.requests;
       const successRequests = row.success_requests;
-      const successRate = requests > 0
-        ? Math.max(0, Math.min(100, Math.round((successRequests / requests) * 100)))
-        : 100;
+      const successRate =
+        requests > 0
+          ? Math.max(0, Math.min(100, Math.round((successRequests / requests) * 100)))
+          : 100;
 
       return {
         date: dateStr,
         tokens: row.tokens,
         promptTokens: row.prompt_tokens,
         completionTokens: row.completion_tokens,
-        requests: requests,
+        requests,
         successRate,
         errors: {
           badRequest: row.error_400,

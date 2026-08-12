@@ -77,17 +77,11 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         </button>
 
         {/* ── Branded header ─────────────────────────────────────────────── */}
-        <div className="relative px-6 pt-5 pb-4 bg-gradient-to-b from-nvidia-green/[0.08] to-transparent border-b border-border/40">
-          {/* Subtle glow behind logo */}
-          <div className="absolute inset-x-0 top-0 h-20 bg-nvidia-green/5 blur-2xl pointer-events-none" />
-
-          <div className="flex items-center gap-3 relative">
-            {/* Logo badge */}
-            <div className="w-11 h-11 rounded-xl bg-nvidia-green/10 border border-nvidia-green/25 flex items-center justify-center shadow-[0_0_20px_rgba(118,185,0,0.2)] overflow-hidden p-1.5 shrink-0">
-              <Image src="/logo.svg" alt="DGX Spark" width={44} height={44} className="object-contain" />
-            </div>
+        <div className="relative border-b border-border/50 px-6 pb-4 pt-5">
+          <div className="relative flex items-center gap-3">
+            <Image src="/logo.svg" alt="" width={36} height={36} className="h-9 w-9 object-contain" />
             <div>
-              <div className="text-[10px] font-bold text-nvidia-green/70 uppercase tracking-widest mb-0.5">
+              <div className="mb-0.5 text-[11px] font-medium uppercase tracking-wider text-foreground/40">
                 DGX Spark Platform
               </div>
               <AnimatePresence mode="wait">
@@ -97,7 +91,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
                   transition={{ duration: 0.15 }}
-                  className="text-xl font-bold text-foreground leading-tight"
+                  className="text-lg font-semibold leading-tight tracking-tight text-foreground"
                 >
                   {isLogin ? "Welcome back" : "Create account"}
                 </motion.h2>
@@ -105,28 +99,27 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             </div>
           </div>
 
-          {/* Mode toggle tabs */}
-          <div className="flex gap-1 mt-4 bg-background/60 border border-border/50 rounded-lg p-1 relative">
+          <div className="relative mt-4 flex gap-1 rounded-full bg-foreground/[0.04] p-1 ring-1 ring-border/60">
             <button
               onClick={() => switchMode(true)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+              className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full py-1.5 text-xs font-semibold transition-all ${
                 isLogin
-                  ? "bg-nvidia-green/15 text-nvidia-green border border-nvidia-green/20 shadow-sm"
+                  ? "bg-panel text-foreground shadow-sm ring-1 ring-border/70"
                   : "text-foreground/40 hover:text-foreground/70"
               }`}
             >
-              <LogIn className="w-3.5 h-3.5" />
+              <LogIn className="h-3.5 w-3.5" />
               Sign In
             </button>
             <button
               onClick={() => switchMode(false)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+              className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full py-1.5 text-xs font-semibold transition-all ${
                 !isLogin
-                  ? "bg-nvidia-green/15 text-nvidia-green border border-nvidia-green/20 shadow-sm"
+                  ? "bg-panel text-foreground shadow-sm ring-1 ring-border/70"
                   : "text-foreground/40 hover:text-foreground/70"
               }`}
             >
-              <UserPlus className="w-3.5 h-3.5" />
+              <UserPlus className="h-3.5 w-3.5" />
               Sign Up
             </button>
           </div>

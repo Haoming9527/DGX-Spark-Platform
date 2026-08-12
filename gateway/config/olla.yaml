@@ -1,0 +1,112 @@
+# Olla — DGX Spark Platform inference gateway
+# Docs: https://thushan.github.io/olla/configuration/reference/
+# Node list is config/env only — no hard-coded routing in application code.
+
+server:
+  host: "0.0.0.0"
+  port: 40114
+  read_timeout: 30s
+  read_header_timeout: 10s
+  write_timeout: 0s # required for streaming
+  shutdown_timeout: 30s
+  request_logging: true
+  cors:
+    enabled: false
+  request_limits:
+    max_body_size: 104857600 # 100MB
+    max_header_size: 1048576
+  rate_limits:
+    global_requests_per_minute: 1000
+    per_ip_requests_per_minute: 120
+    health_requests_per_minute: 1000
+    burst_size: 50
+    trust_proxy_headers: true
+    trusted_proxy_cidrs:
+      - "127.0.0.0/8"
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+
+proxy:
+  engine: "olla"
+  profile: "auto"
+  load_balancer: "least-connections"
+  connection_timeout: 60s
+  connection_keep_alive: 30s
+  response_timeout: 15m
+  read_timeout: 10m
+  response_header_timeout: 120s # remote nodes may cold-load models
+  tls_handshake_timeout: 15s
+  retry:
+    enabled: true
+    on_connection_failure: true
+    max_attempts: 0 # try all eligible healthy endpoints once (pre-stream)
+
+discovery:
+  type: "static"
+  refresh_interval: 30s
+  health_check:
+    initial_delay: 2s
+  static:
+    endpoints:
+      # First node — Singapore DGX Spark (Ollama behind Cloudflare/Caddy)
+      # Add more endpoints below with unique names; no code changes required.
+      # Node base URL: write the real URL here (Olla does not expand ${VAR} in url).
+      # Secrets stay in env via ${SG_API_KEY}.
+      - url: "https://sg.dgxspark.dev"
+        name: "sg.dgxspark.dev"
+        type: "ollama"
+        priority: 100
+        model_url: "/api/tags"
+        health_check_url: "/"
+        check_interval: 15s
+        check_timeout: 10s
+        auth:
+          type: api_key
+          key: "${SG_API_KEY}"
+          header: "X-API-Key"
+  model_discovery:
+    enabled: true
+    interval: 2m
+    timeout: 30s
+    concurrent_workers: 5
+    retry_attempts: 3
+    retry_backoff: 2s
+
+model_registry:
+  type: "memory"
+  enable_unifier: true
+  unification:
+    stale_threshold: 24h
+    cleanup_interval: 10m
+  routing_strategy:
+    type: "strict"
+    options:
+      # Never silently substitute a different model
+      fallback_behavior: "compatible_only"
+      discovery_timeout: 3s
+      discovery_refresh_on_miss: true
+
+translators:
+  anthropic:
+    enabled: false
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+
+engineering:
+  show_nerdstats: false
+
+dashboard:
+  enabled: true
+  access_policy:
+    allowed_cidrs:
+      - "127.0.0.0/8"
+      - "::1/128"
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+    allowed_hosts:
+      - "localhost"
+      - "olla"

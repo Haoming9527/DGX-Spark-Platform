@@ -77,11 +77,11 @@ export default function ApiKeyUsagePage() {
   return (
     <div className="min-h-[100svh] bg-background text-foreground font-sans flex flex-col">
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md px-3 sm:px-4 md:px-8 py-3 sm:py-4 flex items-center justify-between gap-3">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-7 h-7 shrink-0 rounded-lg bg-nvidia-green/10 border border-nvidia-green/20 flex items-center justify-center overflow-hidden p-0.5">
-            <Image src="/logo.svg" alt="Logo" width={28} height={28} className="object-contain" />
-          </div>
-          <span className="font-bold text-sm truncate">DGX Spark<span className="text-nvidia-green"> Platform</span></span>
+        <Link href="/" className="inline-flex items-center gap-2.5 transition-opacity hover:opacity-90">
+          <Image src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7 shrink-0 object-contain" />
+          <span className="hidden text-[15px] font-semibold tracking-tight sm:inline">
+            DGX Spark <span className="font-medium text-foreground/45">Platform</span>
+          </span>
         </Link>
         <div className="min-w-0 text-right text-xs text-foreground/40">
           Signed in as <span className="text-foreground/70 font-semibold">{user.username}</span>

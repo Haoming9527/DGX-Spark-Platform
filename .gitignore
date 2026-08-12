@@ -42,3 +42,7 @@ next-env.d.ts
 
 .vercel
 .env*.local
+
+/lib/generated/prisma
+
+PRODUCT.md

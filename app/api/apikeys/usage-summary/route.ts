@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "../../../../lib/db";
+import { prisma } from "../../../../lib/prisma";
 import { getSession } from "../../../../lib/auth";
 
-const TIMEFRAME_INTERVALS = {
-  "1h": "1 hour",
-  "24h": "24 hours",
-  "7d": "7 days",
-  "30d": "30 days",
+const TIMEFRAME_MINUTES = {
+  "1h": 60,
+  "24h": 24 * 60,
+  "7d": 7 * 24 * 60,
+  "30d": 30 * 24 * 60,
 } as const;
 
-type Timeframe = keyof typeof TIMEFRAME_INTERVALS;
+type Timeframe = keyof typeof TIMEFRAME_MINUTES;
+
+type UsageSummaryRow = {
+  id: string;
+  tokens: number;
+  requests: number;
+};
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,7 +27,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const timeframeParam = searchParams.get("timeframe") || "7d";
 
-    if (!Object.hasOwn(TIMEFRAME_INTERVALS, timeframeParam)) {
+    if (!Object.hasOwn(TIMEFRAME_MINUTES, timeframeParam)) {
       return NextResponse.json(
         { error: "Invalid timeframe parameter. Must be 1h, 24h, 7d, or 30d." },
         { status: 400 }
@@ -29,22 +35,22 @@ export async function GET(req: NextRequest) {
     }
 
     const timeframe = timeframeParam as Timeframe;
+    const minutes = TIMEFRAME_MINUTES[timeframe];
 
-    const result = await query(
-      `SELECT
+    const usage = await prisma.$queryRaw<UsageSummaryRow[]>`
+      SELECT
           k.id,
           COALESCE(SUM(u.tokens), 0)::float8 AS tokens,
           COALESCE(COUNT(u.id), 0)::int AS requests
        FROM api_keys k
        LEFT JOIN api_key_usage u
           ON u.key_id = k.id
-         AND u.timestamp >= NOW() - $2::interval
-       WHERE k.user_id = $1
-       GROUP BY k.id`,
-      [session.userId, TIMEFRAME_INTERVALS[timeframe]]
-    );
+         AND u.timestamp >= NOW() - make_interval(mins => ${minutes})
+       WHERE k.user_id = ${session.userId}::uuid
+       GROUP BY k.id
+    `;
 
-    return NextResponse.json({ usage: result.rows });
+    return NextResponse.json({ usage });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal server error";
     console.error("GET api_keys/usage-summary error:", error);

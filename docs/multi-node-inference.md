@@ -3,11 +3,11 @@
 | Surface | Host | Role |
 |---------|------|------|
 | Dashboard / keys | `https://www.dgxspark.dev` | Next.js (Vercel) |
-| OpenAI API + UI upstream | `https://api.dgxspark.dev` | Auth + Olla (VM) |
+| OpenAI API + UI upstream | `https://api.dgxspark.dev` | Go API + Olla (VM) |
 | Nodes | e.g. `https://sg.dgxspark.dev` | Ollama (gateway-only; never hit from the app) |
 
 ```text
-Browser / SDK → api.dgxspark.dev → auth → Olla → nodes
+Browser / SDK → api.dgxspark.dev → api → Olla → nodes
 ```
 
 ## Run locally
@@ -18,6 +18,8 @@ cp env.example .env
 # fill SG_API_KEY, CHAT_SERVICE_KEY, DATABASE_URL
 docker compose up -d --build
 ```
+
+Edit [`gateway/system-prompt.md`](../gateway/system-prompt.md) (text below `---`). The API service injects it as the first system message on chat completions / Ollama chat.
 
 ## Deploy on Google Cloud (Always Free)
 
