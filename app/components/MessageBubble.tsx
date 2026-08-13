@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, Clock, Zap, Loader2, Copy, Check, RotateCcw } from "lucide-react";
+import { ChevronRight, Clock, Zap, Copy, Check, RotateCcw } from "lucide-react";
 import { Message } from "../types/chat";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
+import oneLight from "react-syntax-highlighter/dist/esm/styles/prism/one-light";
 import type { Components } from "react-markdown";
+import { StickerBusy } from "./ui/StickerBusy";
+import { useTheme } from "./ui/ThemeToggle";
 
 interface MessageBubbleProps {
   message: Message;
@@ -15,7 +18,6 @@ interface MessageBubbleProps {
   showActions?: boolean;
 }
 
-/** Language-less fences that are really chat prose (models do this a lot). */
 function isProseMistakenForCode(code: string): boolean {
   const t = code.trim();
   if (!t || t.includes("\n")) return false;
@@ -24,53 +26,49 @@ function isProseMistakenForCode(code: string): boolean {
   return /[.?!)]$/.test(t) || /^(would|do|can|could|should|shall|may|let|if|what|how|why)\b/i.test(t);
 }
 
-const markdownComponents: Components = {
+function markdownComponents(isDark: boolean): Components {
+  return {
   pre({ children }) {
-    // Let `code` own the chrome so we don't double-wrap.
     return <>{children}</>;
   },
-  code({ className, children, ...props }) {
+  code({ className, children }) {
     const text = String(children).replace(/\n$/, "");
     const match = /language-(\w+)/.exec(className || "");
     const isBlock = Boolean(className) || text.includes("\n");
 
     if (!isBlock) {
       return (
-        <code
-          className="whitespace-pre-wrap break-words rounded-md bg-foreground/[0.06] px-1.5 py-0.5 font-mono text-[0.875em] text-foreground/90 ring-1 ring-border/50"
-          {...props}
-        >
+        <code className="whitespace-pre-wrap break-words rounded-md bg-foreground/[0.06] px-1.5 py-0.5 font-mono text-[0.875em] text-foreground/90 ring-1 ring-border/50">
           {children}
         </code>
       );
     }
 
-    // ``` … ``` with English copy — render as normal paragraph, not a scrolling code chip
     if (!match && isProseMistakenForCode(text)) {
       return <p className="my-3 leading-relaxed">{text}</p>;
     }
 
     if (match) {
       return (
-        <div className="my-3 overflow-hidden rounded-xl ring-1 ring-border/80">
+        <div className="not-prose my-3 overflow-hidden rounded-xl ring-1 ring-border/80">
           <div className="flex items-center justify-between bg-panel-hover/80 px-3.5 py-2 text-[11px] font-medium uppercase tracking-wider text-foreground/40">
             <span>{match[1]}</span>
           </div>
           <SyntaxHighlighter
-            style={oneDark}
+            style={isDark ? oneDark : oneLight}
             language={match[1]}
             PreTag="div"
             wrapLongLines
             customStyle={{
               margin: 0,
               background: "var(--code-bg)",
+              color: isDark ? "#abb2bf" : "#383a42",
               padding: "1rem 1.1rem",
               fontSize: "0.8125rem",
             }}
             codeTagProps={{
               style: { whiteSpace: "pre-wrap", wordBreak: "break-word" },
             }}
-            {...props}
           >
             {text}
           </SyntaxHighlighter>
@@ -79,7 +77,7 @@ const markdownComponents: Components = {
     }
 
     return (
-      <pre className="my-3 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-xl bg-[var(--code-bg)] p-4 font-mono text-[0.8125rem] leading-relaxed text-foreground/85 ring-1 ring-border/80">
+      <pre className="not-prose my-3 max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-xl bg-[var(--code-bg)] p-4 font-mono text-[0.8125rem] leading-relaxed text-foreground/85 ring-1 ring-border/80">
         <code className="bg-transparent p-0 font-inherit text-inherit ring-0">{text}</code>
       </pre>
     );
@@ -116,10 +114,14 @@ const markdownComponents: Components = {
   td({ children }) {
     return <td className="border-b border-border/60 px-3.5 py-2.5">{children}</td>;
   },
-};
+  };
+}
 
 export function MessageBubble({ message, onRetry, showActions }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const components = markdownComponents(isDark);
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -137,19 +139,33 @@ export function MessageBubble({ message, onRetry, showActions }: MessageBubblePr
   if (isUser) {
     return (
       <div className="flex w-full justify-end">
-        <div className="max-w-[85%] rounded-[22px] bg-[#f4f4f4] px-4 py-2.5 text-[15px] leading-normal text-[#0d0d0d] dark:bg-[#2f2f2f] dark:text-[#ececec] sm:max-w-[70%]">
-          <div className="whitespace-pre-wrap break-words [&_p]:m-0 [&_p+_p]:mt-2">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                p: ({ children }) => <p className="m-0">{children}</p>,
-                code: markdownComponents.code,
-                pre: markdownComponents.pre,
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
-          </div>
+        <div className="sticker max-w-[85%] !rounded-[1.25rem] px-4 py-2.5 text-[15px] leading-normal text-foreground sm:max-w-[70%]">
+          {message.images && message.images.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {message.images.map((src, i) => (
+                <img
+                  key={`${message.id}-img-${i}`}
+                  src={src}
+                  alt=""
+                  className="max-h-40 max-w-full rounded-xl object-cover ring-1 ring-border"
+                />
+              ))}
+            </div>
+          )}
+          {message.content ? (
+            <div className="whitespace-pre-wrap break-words [&_p]:m-0 [&_p+_p]:mt-2">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  p: ({ children }) => <p className="m-0">{children}</p>,
+                  code: components.code,
+                  pre: components.pre,
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -162,42 +178,36 @@ export function MessageBubble({ message, onRetry, showActions }: MessageBubblePr
     <div className="group flex w-full flex-col gap-2">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-1">
         {message.thoughtProcess && (
-          <details
-            open={message.isThinking || undefined}
-            className="group/think w-full max-w-full"
-          >
-            <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] text-foreground/45 transition-colors hover:bg-foreground/[0.04] hover:text-foreground/70 [&::-webkit-details-marker]:hidden">
+          <details className="group/think sticker-dark w-full max-w-full !rounded-xl px-3 py-2.5">
+            <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-lg px-1 py-0.5 text-[13px] text-[#b0b0b0] transition-colors hover:text-white [&::-webkit-details-marker]:hidden">
               <ChevronRight className="h-3.5 w-3.5 transition-transform group-open/think:rotate-90" />
-              <span className="font-medium tracking-tight">
+              <span className="font-display font-bold uppercase tracking-[0.06em]">
                 {message.isThinking ? "Thinking" : "Thoughts"}
               </span>
               {message.isThinking && (
-                <span className="ml-0.5 inline-flex gap-0.5" aria-hidden>
-                  <span className="h-1 w-1 animate-pulse rounded-full bg-foreground/35 [animation-delay:0ms]" />
-                  <span className="h-1 w-1 animate-pulse rounded-full bg-foreground/35 [animation-delay:150ms]" />
-                  <span className="h-1 w-1 animate-pulse rounded-full bg-foreground/35 [animation-delay:300ms]" />
+                <span className="ml-1.5 inline-flex items-center gap-1" aria-hidden>
+                  <span className="sticker-pulse" />
+                  <span className="sticker-pulse sticker-pulse-delay-1" />
+                  <span className="sticker-pulse sticker-pulse-delay-2" />
                 </span>
               )}
             </summary>
-            <div className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap border-l-2 border-border/80 pl-3.5 text-[13px] leading-relaxed text-foreground/50">
+            <div className="custom-scrollbar mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap border-t border-white/10 pt-2.5 pl-1 text-[13px] leading-relaxed text-[#a8a8a8]">
               {message.thoughtProcess}
             </div>
           </details>
         )}
 
         {showBody && (
-          <div className="w-full min-w-0 overflow-hidden text-[15px] leading-relaxed text-foreground">
+          <div className="w-full min-w-0 p-[3px] text-[15px] leading-relaxed text-foreground">
             {message.content ? (
-              <div className="prose prose-sm dark:prose-invert max-w-none break-words sm:prose-base prose-p:my-3 prose-p:leading-relaxed prose-headings:font-semibold prose-headings:tracking-tight prose-pre:my-0 prose-pre:bg-transparent prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none prose-a:text-nvidia-green prose-a:no-underline hover:prose-a:underline">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+              <div className="prose prose-sm dark:prose-invert max-w-none break-words text-foreground sm:prose-base prose-p:my-3 prose-p:leading-relaxed prose-p:text-foreground prose-li:text-foreground prose-strong:text-foreground prose-headings:font-display prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-foreground prose-pre:my-0 prose-pre:bg-transparent prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none prose-a:text-nvidia-green prose-a:no-underline hover:prose-a:underline">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
                   {message.content}
                 </ReactMarkdown>
               </div>
             ) : (
-              <div className="flex items-center gap-2 py-1 text-foreground/40">
-                <Loader2 className="h-4 w-4 animate-spin text-nvidia-green" />
-                <span className="text-sm">Generating…</span>
-              </div>
+              <StickerBusy mode="generating" />
             )}
           </div>
         )}
@@ -207,7 +217,7 @@ export function MessageBubble({ message, onRetry, showActions }: MessageBubblePr
             <button
               type="button"
               onClick={handleCopy}
-              className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-foreground/40 transition-colors hover:bg-foreground/[0.06] hover:text-foreground/80"
+              className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
               title={copied ? "Copied" : "Copy"}
             >
               {copied ? (
@@ -220,14 +230,14 @@ export function MessageBubble({ message, onRetry, showActions }: MessageBubblePr
               <button
                 type="button"
                 onClick={onRetry}
-                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-foreground/40 transition-colors hover:bg-foreground/[0.06] hover:text-foreground/80"
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
                 title="Try again"
               >
                 <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
               </button>
             )}
             {message.evalCount && message.evalDurationMs && (
-              <div className="ml-1.5 flex items-center gap-2.5 text-[11px] tabular-nums text-foreground/30">
+              <div className="ml-1.5 flex items-center gap-2.5 font-mono text-[11px] tabular-nums text-muted">
                 <span className="inline-flex items-center gap-1">
                   <Clock className="h-3 w-3" />
                   {(message.evalDurationMs / 1000).toFixed(1)}s

@@ -63,15 +63,31 @@ func main() {
 			writeOpenAIError(w, http.StatusUnauthorized, "Invalid API key.", "invalid_request_error", strPtr("invalid_api_key"))
 			return
 		}
-		if shouldInjectSystemPrompt(r) {
-			if err := injectSystemPrompt(r, promptStore.get()); err != nil {
-				log.Printf("system prompt inject failed: %v", err)
-				writeOpenAIError(w, http.StatusBadRequest, "Invalid request body.", "invalid_request_error", nil)
-				return
-			}
-		}
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-		proxy.ServeHTTP(rec, r)
+		if kind, ok := liveModelListKind(r); ok {
+			writeLiveModelList(rec, ollaURL, kind)
+		} else {
+			if shouldInjectSystemPrompt(r) {
+				if err := injectSystemPrompt(r, promptStore.get()); err != nil {
+					log.Printf("system prompt inject failed: %v", err)
+					writeOpenAIError(w, http.StatusBadRequest, "Invalid request body.", "invalid_request_error", nil)
+					return
+				}
+				prepared, err := prepareChatPayload(r)
+				if err != nil {
+					writeOpenAIError(w, http.StatusBadRequest, err.Error(), "invalid_request_error", nil)
+					return
+				}
+				r = prepared
+				prepared, err = prepareStructuredOutput(r)
+				if err != nil {
+					writeOpenAIError(w, http.StatusBadRequest, err.Error(), "invalid_request_error", nil)
+					return
+				}
+				r = prepared
+			}
+			proxy.ServeHTTP(rec, r)
+		}
 		if keyID != "" && pool != nil {
 			go logUsage(context.Background(), pool, keyID, rec.status)
 		}

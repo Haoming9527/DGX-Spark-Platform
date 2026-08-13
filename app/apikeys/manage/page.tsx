@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, BarChart3, BookOpen, ExternalLink, Key, Loader2, Trash2, TriangleAlert, X } from "lucide-react";
+import { BarChart3, BookOpen, ExternalLink, Key, Loader2, Trash2, TriangleAlert, X } from "lucide-react";
 
 import { KeysView } from "../../components/KeysView";
+import { LogoMark } from "../../components/ui/LogoMark";
+import { ExitBack } from "../../components/ui/ExitBack";
+import { ThemeToggle } from "../../components/ui/ThemeToggle";
 
 interface ApiKey {
   id: string;
@@ -139,7 +141,7 @@ export default function ManageApiKeysPage() {
 
   if (sessionLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="w-8 h-8 text-nvidia-green animate-spin" />
       </div>
     );
@@ -148,7 +150,7 @@ export default function ManageApiKeysPage() {
   if (!user) return null;
 
   return (
-    <div className="min-h-[100svh] bg-background text-foreground font-sans flex flex-col">
+    <div className="flex min-h-[100svh] flex-col font-sans text-foreground">
       <AnimatePresence>
         {confirmTarget && (
           <ConfirmRevokeDialog
@@ -160,28 +162,28 @@ export default function ManageApiKeysPage() {
         )}
       </AnimatePresence>
 
-      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md px-3 sm:px-4 md:px-8 py-3 sm:py-4 flex items-center justify-between gap-3">
-        <Link href="/" className="inline-flex items-center gap-2.5 transition-opacity hover:opacity-90">
-          <Image src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7 shrink-0 object-contain" />
-          <span className="hidden text-[15px] font-semibold tracking-tight sm:inline">
-            DGX Spark <span className="font-medium text-foreground/45">Platform</span>
-          </span>
-        </Link>
-        <div className="min-w-0 text-right text-xs text-foreground/40">
-          Signed in as <span className="text-foreground/70 font-semibold">{user.username}</span>
+      <header className="sticky top-0 z-50 px-3 py-3 sm:px-4 md:px-8">
+        <div className="sticker flex items-center justify-between gap-3 !rounded-full px-2 py-2 sm:px-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <ExitBack href="/" />
+            <Link href="/" className="hidden items-center gap-2 sm:inline-flex">
+              <LogoMark size={22} className="!rounded-xl !border-[3px]" />
+              <span className="font-display text-[15px] font-bold uppercase tracking-[0.04em]">
+                API Keys
+              </span>
+            </Link>
+          </div>
+          <div className="flex min-w-0 items-center gap-2">
+            <ThemeToggle />
+            <div className="min-w-0 text-right text-xs text-muted">
+              Signed in as <span className="font-semibold text-foreground">{user.username}</span>
+            </div>
+          </div>
         </div>
       </header>
 
-      <div className="flex-1 flex flex-col md:flex-row">
-        <nav className="w-full md:w-64 border-b md:border-b-0 md:border-r border-border bg-panel/30 px-2 py-2 sm:p-4 shrink-0 grid grid-cols-4 md:flex md:flex-col gap-1.5 md:gap-2 md:overflow-y-auto custom-scrollbar md:sticky md:top-[61px] md:h-[calc(100vh-61px)]">
-          <Link
-            href="/"
-            className="flex h-9 min-w-0 items-center justify-center md:justify-start gap-1.5 md:gap-3 px-2 md:px-4 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer text-foreground/50 hover:text-foreground/80 border border-transparent"
-          >
-            <ArrowLeft className="w-4 h-4 shrink-0" />
-            <span className="truncate md:hidden">Back</span>
-            <span className="hidden md:inline truncate">Back to Chat</span>
-          </Link>
+      <div className="flex flex-1 flex-col md:flex-row">
+        <nav className="sticker mx-2 mb-2 grid shrink-0 grid-cols-4 gap-1.5 !rounded-2xl px-2 py-2 sm:p-3 md:sticky md:top-[5.5rem] md:mx-3 md:mb-0 md:h-[calc(100vh-6.5rem)] md:w-64 md:flex md:flex-col md:gap-2 md:overflow-y-auto custom-scrollbar">
           {[
             { id: "keys", label: "API Keys", icon: Key, href: "/apikeys/manage" },
             { id: "usage", label: "Token Usage", icon: BarChart3, href: "/apikeys/usage" },
@@ -189,13 +191,13 @@ export default function ManageApiKeysPage() {
             <Link
               href={item.href}
               key={item.id}
-              className={`flex h-9 min-w-0 items-center justify-center md:justify-start gap-1.5 md:gap-3 px-2 md:px-4 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+              className={`flex h-9 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl px-2 text-xs font-semibold transition-all sm:text-sm md:justify-start md:gap-3 md:px-4 ${
                 activeSection === item.id
-                  ? "bg-nvidia-green/10 text-nvidia-green border border-nvidia-green/15"
-                  : "text-foreground/50 hover:text-foreground/80 border border-transparent"
+                  ? "border border-nvidia-green/20 bg-nvidia-green/10 text-nvidia-green"
+                  : "border border-transparent text-muted hover:text-foreground"
               }`}
             >
-              <item.icon className="w-4 h-4 shrink-0" />
+              <item.icon className="h-4 w-4 shrink-0" />
               <span className="truncate">{item.id === "keys" ? "Keys" : item.id === "usage" ? "Usage" : item.label}</span>
             </Link>
           ))}
@@ -203,21 +205,21 @@ export default function ManageApiKeysPage() {
             href="/documentation"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex h-9 min-w-0 items-center justify-center md:justify-start gap-1.5 md:gap-3 px-2 md:px-4 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer text-foreground/50 hover:text-foreground/80 border border-transparent"
+            className="flex h-9 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-transparent px-2 text-xs font-semibold text-muted transition-all hover:text-foreground sm:text-sm md:justify-start md:gap-3 md:px-4"
           >
-            <BookOpen className="w-4 h-4 shrink-0" />
+            <BookOpen className="h-4 w-4 shrink-0" />
             <span className="truncate md:hidden">Docs</span>
-            <span className="hidden md:inline truncate">Documentation</span>
-            <ExternalLink className="hidden md:block w-3.5 h-3.5 ml-auto opacity-60" />
+            <span className="hidden truncate md:inline">Documentation</span>
+            <ExternalLink className="ml-auto hidden h-3.5 w-3.5 opacity-60 md:block" />
           </Link>
         </nav>
 
-        <main className="flex-1 w-full max-w-6xl p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6">
-          <div className="border-b border-border/50 pb-3 sm:pb-4 mb-2">
-            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+        <main className="w-full max-w-6xl flex-1 space-y-5 p-4 sm:space-y-6 sm:p-6 md:p-8">
+          <div className="sticker mb-2 px-4 py-3 sm:px-5 sm:py-4">
+            <h1 className="font-display text-lg font-bold uppercase tracking-tight text-foreground sm:text-xl">
               Manage API Keys
             </h1>
-            <p className="text-xs text-foreground/40 mt-1 leading-5">
+            <p className="mt-1 text-xs leading-5 text-muted">
               Create, inspect, and revoke your credentials.
             </p>
           </div>
@@ -260,7 +262,7 @@ function ConfirmRevokeDialog({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.92, y: 16 }}
         transition={{ duration: 0.18 }}
-        className="w-full max-w-sm bg-panel border border-border rounded-2xl shadow-2xl overflow-hidden"
+        className="sticker w-full max-w-sm overflow-hidden !rounded-2xl"
       >
         <div className="flex items-start justify-between p-5 pb-0">
           <div className="flex items-center gap-3">

@@ -1,8 +1,5 @@
--- Database schema for DGX Spark Platform
--- Next.js uses Prisma (`prisma/schema.prisma`) against these tables.
--- Go gateway auth keeps using raw SQL against the same Neon DB — keep both in sync.
+-- Keep in sync with prisma/schema.prisma (Next.js) and gateway raw SQL auth.
 
--- 1. Users Table
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(50) UNIQUE NOT NULL,
@@ -12,7 +9,6 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
--- 2. API Keys Table
 CREATE TABLE IF NOT EXISTS api_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -23,10 +19,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
     last_used_at TIMESTAMPTZ
 );
 
--- Index for fast lookup by key hash
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
 
--- 3. API Key Usage Table (New detailed telemetry logger)
 CREATE TABLE IF NOT EXISTS api_key_usage (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     key_id UUID NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
@@ -37,10 +31,8 @@ CREATE TABLE IF NOT EXISTS api_key_usage (
     status_code INT NOT NULL
 );
 
--- Index for fast daily aggregation and lookup by key
 CREATE INDEX IF NOT EXISTS idx_api_key_usage_key_timestamp ON api_key_usage(key_id, timestamp DESC);
 
--- Existing database migration helpers
 ALTER TABLE api_key_usage
     ALTER COLUMN tokens TYPE BIGINT,
     ALTER COLUMN prompt_tokens TYPE BIGINT,

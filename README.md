@@ -1,29 +1,25 @@
-# 🟢 DGX Spark Platform
+# DGX Spark Platform
 
-A private, high-performance, and feature-rich chat interface optimized for **Nvidia DGX Spark** and local LLM execution via Ollama. 
+Private chat UI and OpenAI-compatible API for models on **NVIDIA DGX Spark** (via Ollama), with auth, API keys, usage telemetry, and a multi-node inference gateway.
 
-Built with **Next.js 16**, **Tailwind CSS v4**, and **Framer Motion**, this platform provides a premium, Nvidia-themed GPT alternative with absolute privacy and zero data retention.
-
----
-
-## 🚀 Key Features
-
-- **🧠 Reasoning Mode (Thinking)**: Toggle internal reasoning for supported models to visualize the AI's thought process in a clean, expandable accordion.
-- **🎙️ Voice-to-Text**: Built-in, high-fidelity browser voice recognition with real-time interim transcription and visual feedback.
-- **🔐 Secure Authentication**: Multi-user account login and signup powered by Neon PostgreSQL database, password hashing (`bcryptjs`), and secure JWT-signed HTTP-Only cookies.
-- **🎫 Timing-Safe Invite Codes**: Restricts user registration via a constant-time referral validation check (`crypto.timingSafeEqual`) to block length-based timing attacks.
-- **🔑 Developer API Keys**: Generate, rename, and revoke custom API keys (e.g., `dgx_sk_...`) from a private dashboard page.
-- **📊 Real-time Telemetry & Timeline**: Visualizes token and request volumes per key across dynamic intervals (Past 1h, 24h, 7d, 30d). Drill-down views display interactive SVG lines (Requests vs. Success Rates) and stacked bar charts for status code errors (400, 403, 404).
-- **🔌 OpenAI-Compatible API**: Public inference at `https://api.dgxspark.dev/v1` (Olla gateway). Dashboard stays on `www.dgxspark.dev`.
-- **🛰️ Multi-node inference (Olla)**: [`docs/multi-node-inference.md`](docs/multi-node-inference.md) — public API `https://api.dgxspark.dev/v1`.
-- **🎨 Nvidia-Inspired UI**: Premium dark/light themes with signature neon-green accents, glassmorphism, and smooth Framer Motion transitions.
-- **💤 DGX Offline Mode**: Intelligent handling of backend connectivity. If the DGX hardware is resting, the platform gracefully enters a "Resting" state.
+Built with **Next.js**, **Tailwind CSS v4**, and a thin **Go** front-door in front of [Olla](https://thushan.github.io/olla/).
 
 ---
 
-## 🏗️ Backend Architecture
+## Key features
 
-Control plane (Next.js) and inference data plane (Olla) are separate:
+- **Reasoning mode** — optional thinking stream for supported models
+- **Voice input** — browser speech recognition with live interim text
+- **Auth** — invite-gated signup, bcrypt passwords, JWT HTTP-only cookies
+- **API keys** — create / rename / revoke `dgx_sk_*` keys; usage charts
+- **OpenAI-compatible API** — `https://api.dgxspark.dev/v1`
+- **Multi-node gateway** — Olla + Go API; see [`docs/multi-node-inference.md`](docs/multi-node-inference.md)
+- **Sticker UI** — paper/asphalt + dot grid, selective stickers, EXIT go-back plate
+- **Gateway / AI-server status** — sleeping vs offline handling in chat
+
+---
+
+## Architecture
 
 ```mermaid
 graph TD
@@ -39,103 +35,160 @@ graph TD
     N --> OllamaN[Ollama]
 ```
 
-1. **Next.js (Vercel)** — dashboard, login, API key CRUD, usage charts at `www.dgxspark.dev`.
-2. **Go API + Olla (GCP e2-micro / any VPS)** — validate `dgx_sk_*`, model-aware routing, streaming at `api.dgxspark.dev/v1`.
-3. **Inference nodes** — Ollama behind Cloudflare Tunnel + Caddy (`X-API-Key`), starting with `sg.dgxspark.dev`.
-4. **Neon** — shared users / API keys / usage (hashed keys only).
+1. **Next.js** — dashboard, login, keys, usage (`www`)
+2. **Go API + Olla** — validate keys, route/stream inference (`api`)
+3. **Inference nodes** — Ollama behind tunnel/Caddy
+4. **Neon** — users, hashed API keys, usage
 
-See [`docs/multi-node-inference.md`](docs/multi-node-inference.md).
-
----
-
-## 🛠️ Tech Stack
-
-- **Frontend**: [Next.js 16](https://nextjs.org/) (App Router), [React 19](https://react.dev/)
-- **Database**: [Neon Serverless PostgreSQL](https://neon.tech/) via **Prisma** (Next.js) + raw SQL (Go gateway API)
-- **Auth**: [bcryptjs](https://github.com/dcodeIO/bcrypt.js) (Password Hashing), [jsonwebtoken](https://github.com/auth0/node-jsonwebtoken) (Session Tokens)
-- **Inference gateway**: [Olla](https://thushan.github.io/olla/) + thin Go API-key front-door
-- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
-- **Animations**: [Framer Motion](https://www.framer.com/motion/)
-- **Icons**: [Lucide React](https://lucide.dev/)
-- **Markdown**: [React-Markdown](https://github.com/remarkjs/react-markdown) + [Remark-GFM](https://github.com/remarkjs/remark-gfm)
-- **Code Highlighting**: [React-Syntax-Highlighter](https://github.com/react-syntax-highlighter/react-syntax-highlighter) (Prism)
-- **Backend API**: [Ollama](https://ollama.com/) on DGX Spark nodes
-- **Deployment**: Vercel (www) + GCP Always Free e2-micro or any VPS (api) + [Cloudflare Tunnel](https://www.cloudflare.com/products/tunnel/) for `api.dgxspark.dev`
+Details: [`docs/multi-node-inference.md`](docs/multi-node-inference.md).
 
 ---
 
-## ⚙️ Configuration
+## Tech stack
 
-Copy [`env.example`](env.example) to `.env` in the project root:
+- **Frontend**: Next.js (App Router), React, Tailwind CSS v4, Framer Motion, Lucide
+- **Database**: Neon PostgreSQL — Prisma (Next.js) + pgx (Go)
+- **Auth**: bcryptjs, jsonwebtoken
+- **Gateway**: Go API + [Olla](https://thushan.github.io/olla/)
+- **Inference**: Ollama on DGX Spark nodes
+- **Deploy**: Vercel (www) + VPS/Docker (api) + Cloudflare Tunnel
+
+---
+
+## Configuration
+
+### Next.js (project root)
+
+Copy [`env.example`](env.example) → `.env`:
 
 ```env
 DATABASE_URL=postgresql://user:password@host-pooler/dbname?sslmode=require
-# DIRECT_URL=postgresql://user:password@host/dbname?sslmode=require   # optional, Prisma CLI
 JWT_SECRET=your-secure-jwt-signing-secret
 REFERRAL_CODE=your-secret-invite-signup-code
 
-# UI chat via Olla gateway (not direct to a DGX node)
-INFERENCE_GATEWAY_URL=https://api.dgxspark.dev
+INFERENCE_GATEWAY_URL=http://127.0.0.1:50080
 INFERENCE_GATEWAY_API_KEY=dgx_chat_your_platform_chat_key
 ```
 
-- `INFERENCE_GATEWAY_URL`: Public API+Olla gateway.
-- `INFERENCE_GATEWAY_API_KEY`: Platform chat key (`dgx_chat_…`) — same as gateway `CHAT_SERVICE_KEY`. Not a user dashboard key.
-- Node secrets (`SG_API_*`) live only on the VPS — see [`gateway/env.example`](gateway/env.example).
-- SDK clients use `base_url=https://api.dgxspark.dev/v1` with a `dgx_sk_*` key from the dashboard.
+| Variable | Purpose |
+|----------|---------|
+| `INFERENCE_GATEWAY_URL` | Go API base URL (local `:50080` or `https://api.dgxspark.dev`) |
+| `INFERENCE_GATEWAY_API_KEY` | Platform chat key (`dgx_chat_…`) — must match gateway `CHAT_SERVICE_KEY` |
+
+User SDK keys are `dgx_sk_*` from the dashboard (`base_url=…/v1`). They are not the chat key.
+
+### Gateway (`gateway/`)
+
+Copy [`gateway/env.example`](gateway/env.example) → `gateway/.env`:
+
+```env
+SG_API_ENDPOINT=https://sg.dgxspark.dev
+SG_API_KEY=replace-with-node-x-api-key
+OLLA_PORT=40114
+API_PORT=50080
+CHAT_SERVICE_KEY=dgx_chat_your_platform_chat_key
+DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
+```
+
+> On Windows, low ports like `8000`/`8080` are often reserved by Hyper-V/WinNAT. Prefer a high host port such as `50080`.
 
 ---
 
-## 📦 Installation & Setup
+## Run the Next.js app
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/Haoming9527/DGX-Spark-Platform.git
-   cd DGX-Spark-Platform
-   ```
+```bash
+git clone https://github.com/Haoming9527/DGX-Spark-Platform.git
+cd DGX-Spark-Platform
+cp env.example .env   # fill values
+npm install
+npm run dev
+```
 
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+Open [http://localhost:3000](http://localhost:3000).
 
-3. **Run the development server**:
-   ```bash
-   npm run dev
-   ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to experience the platform.
+Point `INFERENCE_GATEWAY_URL` at a running gateway (below) or production `https://api.dgxspark.dev`.
 
 ---
 
-## 🌙 Design System
+## Run the gateway
 
-The platform features a **Dynamic Design System** that automatically adapts according to your browser/system preference:
+The gateway is Docker Compose under [`gateway/`](gateway/): **Olla** (model router) + **Go API** (auth, system prompt, proxy).
 
-- **Nvidia Dark**: A sleek, high-contrast dark mode using `#0a0a0a` and neon green gradients.
-- **Nvidia Light**: A crisp, clean professional light mode using `#f9fafb` with subtle green borders.
+### 1. Configure
+
+```bash
+cd gateway
+cp env.example .env
+```
+
+Edit `.env`:
+
+- `SG_API_ENDPOINT` / `SG_API_KEY` — first inference node
+- `CHAT_SERVICE_KEY` — same value as Next.js `INFERENCE_GATEWAY_API_KEY`
+- `DATABASE_URL` — Neon (needed for `dgx_sk_*` user keys; optional if you only test the chat key)
+
+Optional: edit [`gateway/system-prompt.md`](gateway/system-prompt.md) (text below `---`). The API injects it as the first system message on chat completions.
+
+### 2. Start
+
+```bash
+docker compose up -d --build
+```
+
+| Service | Default | Role |
+|---------|---------|------|
+| `api` | `http://127.0.0.1:50080` | Public front-door (`/v1`, `/healthz`, status) |
+| `olla` | `http://127.0.0.1:40114` | Internal router (usually not hit from the browser) |
+
+Check health:
+
+```bash
+curl http://127.0.0.1:50080/healthz
+```
+
+### 3. Wire the UI
+
+In the project root `.env`:
+
+```env
+INFERENCE_GATEWAY_URL=http://127.0.0.1:50080
+INFERENCE_GATEWAY_API_KEY=dgx_chat_…   # same as CHAT_SERVICE_KEY
+```
+
+Restart `npm run dev` if it was already running.
+
+### 4. Stop
+
+```bash
+cd gateway
+docker compose down
+```
+
+### Production notes
+
+- Expose only the API host port (local default `50080`, container still listens on `8080`) via Cloudflare Tunnel — see [`gateway/cloudflared.example.yml`](gateway/cloudflared.example.yml).
+- Full VM / tunnel steps: [`docs/multi-node-inference.md`](docs/multi-node-inference.md).
 
 ---
 
-## 🔐 Security Disclaimer
+## Design
 
-The **DGX Spark Platform** is designed for private environments. All LLM processing is handled on private hardware to ensure total data sovereignty.
-
----
-
-## ⚖️ Legal Disclaimer
-
-**DGX Spark Platform** is a **personal, non-commercial project** developed for private infrastructure management and local LLM research.
-
-- This project is **not affiliated, associated, authorized, endorsed by, or in any way officially connected** with **NVIDIA Corporation**, or any of its subsidiaries or its affiliates. 
-- The name "NVIDIA" as well as related names, marks, emblems, and images are registered trademarks of their respective owners.
-- The use of "NVIDIA" or "DGX" in this project is for descriptive purposes only to indicate compatibility with specific hardware environments.
+Sticker-poster UI: dotted paper/asphalt field, die-cut stickers, corridor **EXIT** plate for go-back, logo green `#75B900`. Light/dark via manual toggle (persisted) with system preference as fallback.
 
 ---
 
-## 📄 License
+## Security
 
-This project is licensed under the **MIT License** - see the [LICENSE](file:///e:/Projects/dgx-spark-platform/LICENSE) file for details.
+Built for private infrastructure. Inference runs on your nodes; keep gateway and node secrets off the client and out of git.
 
+---
 
+## Legal
 
+**DGX Spark Platform** is a personal, non-commercial project. It is **not affiliated with NVIDIA**. “NVIDIA” / “DGX” are used only to describe hardware compatibility.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

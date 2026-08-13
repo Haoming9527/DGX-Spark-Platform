@@ -17,6 +17,7 @@ type ollaEndpointsPayload struct {
 
 type ollaEndpoint struct {
 	Name   string `json:"name"`
+	URL    string `json:"url"`
 	Type   string `json:"type"`
 	Status string `json:"status"`
 	Issues string `json:"issues"`
@@ -31,7 +32,7 @@ type capacityEndpoint struct {
 }
 
 type capacityResponse struct {
-	Status        string             `json:"status"` // ready | sleeping | degraded
+	Status        string             `json:"status"`
 	CheckedAt     string             `json:"checked_at"`
 	EndpointsUp   string             `json:"endpoints_up"`
 	TotalCount    int                `json:"total_count"`

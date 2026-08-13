@@ -73,7 +73,6 @@ export function UsageDetails({
     ? hoveredPoint.errors.badRequest + hoveredPoint.errors.forbidden + hoveredPoint.errors.notFound
     : 0;
 
-  // SVG dimensions
   const width = 780;
   const height = 360;
   const paddingLeft = 66;
@@ -95,7 +94,6 @@ export function UsageDetails({
     return { x, y };
   });
 
-  // Success Rate Line Path coordinates
   const successPoints = chartData.map((d, i) => {
     const x = paddingLeft + (i / divisor) * chartWidth;
     const y = paddingTop + chartHeight - (d.successRate / successScaleMax) * chartHeight;
@@ -145,7 +143,6 @@ export function UsageDetails({
 
   return (
     <div className="relative w-full min-h-[360px]">
-      {/* Loading Overlay */}
       {loading && (
         <div className="absolute -inset-3 bg-background/75 backdrop-blur-[4px] z-[100] flex items-center justify-center rounded-2xl">
           <div className="flex flex-col items-center gap-3">
@@ -156,7 +153,6 @@ export function UsageDetails({
       )}
 
       <div className="space-y-6">
-        {/* Back button and Date Range filter */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <button
             onClick={onBackClick}
@@ -186,15 +182,13 @@ export function UsageDetails({
             ))}
           </div>
         </div>
-
-        {/* Stats Header */}
-        <div className="bg-panel border border-border rounded-xl p-5 flex items-center justify-between">
+        <div className="sticker rounded-2xl p-5 flex items-center justify-between">
           <div className="space-y-1 truncate pr-4">
             <h2 className="text-sm font-bold text-foreground truncate">{selectedKey.name}</h2>
             <div className="flex items-center gap-2 text-xs text-foreground/40 font-mono">
               <span>Prefix:</span>
               <code className="text-nvidia-green bg-background px-1.5 py-0.5 rounded border border-border/50">
-                {selectedKey.key_prefix}…
+                {selectedKey.key_prefix}
               </code>
             </div>
           </div>
@@ -210,11 +204,8 @@ export function UsageDetails({
             </div>
           </div>
         </div>
-
-        {/* Side-by-side charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Success Rate Chart */}
-          <div className="bg-panel border border-border rounded-xl p-6 space-y-5 relative flex flex-col justify-between min-h-[340px]">
+          <div className="sticker rounded-2xl p-6 space-y-5 relative flex flex-col justify-between min-h-[340px]">
             <div className="flex justify-between items-center border-b border-border/40 pb-2">
               <span className="text-lg font-bold text-foreground/80">Success Rate</span>
               <div className="flex items-center gap-3 text-sm font-bold text-foreground/55">
@@ -340,9 +331,7 @@ export function UsageDetails({
               )}
             </div>
           </div>
-
-          {/* API Errors */}
-          <div className="bg-panel border border-border rounded-xl p-6 space-y-5 relative flex flex-col justify-between min-h-[340px]">
+          <div className="sticker rounded-2xl p-6 space-y-5 relative flex flex-col justify-between min-h-[340px]">
             <div className="flex justify-between items-center border-b border-border/40 pb-2">
               <span className="text-lg font-bold text-foreground/80">Total API Errors</span>
               <div className="flex items-center gap-3.5 text-sm font-bold text-foreground/55">

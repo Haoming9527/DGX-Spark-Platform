@@ -9,24 +9,29 @@ export async function POST(req: NextRequest) {
     const { messages, model, useReasoning } = await req.json();
     const { base, apiKey } = requireInferenceGateway();
 
+    const payload: Record<string, unknown> = {
+      model: model || "qwen3.6:35b-a3b",
+      messages,
+      stream: true,
+    };
+    if (useReasoning === true) {
+      payload.think = true;
+    }
+
     const response = await fetch(`${base}/olla/ollama/api/chat`, {
       method: "POST",
       headers: gatewayAuthHeaders(apiKey, { "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        model: model || "qwen3.6:35b-a3b",
-        messages,
-        stream: true,
-        think: Boolean(useReasoning),
-      }),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(180000),
     });
 
     if (!response.ok) {
       const upstream = await response.text();
+      const jsonHeaders = { "Content-Type": "application/json" };
       if ([530, 502, 401].includes(response.status)) {
         return new Response(
           JSON.stringify({ error: "OFFLINE", message: "DGX Spark gateway is currently unavailable." }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: jsonHeaders }
         );
       }
       if (
@@ -35,11 +40,48 @@ export async function POST(req: NextRequest) {
       ) {
         return new Response(
           JSON.stringify({ error: "SLEEPING", message: "No AI servers are online." }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: jsonHeaders }
+        );
+      }
+      if (response.status === 404 || /model ['"][^'"]+['"] not found/i.test(upstream)) {
+        const named =
+          upstream.match(/model ['"]([^'"]+)['"]/i)?.[1] || model || "that model";
+        return new Response(
+          JSON.stringify({
+            error: "MODEL_UNAVAILABLE",
+            message: `${named} is not installed on DGX Spark. Choose another model.`,
+          }),
+          { status: 200, headers: jsonHeaders }
+        );
+      }
+      if (response.status === 400 && /does not support thinking/i.test(upstream)) {
+        return new Response(
+          JSON.stringify({
+            error: "MODEL_CAPABILITY",
+            capability: "thinking",
+            message: `${model || "This model"} does not support thinking. Turn it off or pick another model.`,
+          }),
+          { status: 200, headers: jsonHeaders }
+        );
+      }
+      if (response.status === 400 && /does not support (images|vision)/i.test(upstream)) {
+        return new Response(
+          JSON.stringify({
+            error: "MODEL_CAPABILITY",
+            capability: "vision",
+            message: `${model || "This model"} does not accept images. Remove attachments or pick a vision model.`,
+          }),
+          { status: 200, headers: jsonHeaders }
         );
       }
       console.error(`Gateway Error: ${response.status}`, upstream);
-      return new Response(`Error from upstream: ${response.statusText}`, { status: response.status });
+      return new Response(
+        JSON.stringify({
+          error: "UPSTREAM",
+          message: "The model request failed. Try again or pick another model.",
+        }),
+        { status: 200, headers: jsonHeaders }
+      );
     }
 
     return new Response(response.body, {

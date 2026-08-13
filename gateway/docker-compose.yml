@@ -23,13 +23,15 @@ services:
       - path: .env
         required: false
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "127.0.0.1:${API_PORT:-50080}:8080"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       CHAT_SERVICE_KEY: ${CHAT_SERVICE_KEY}
       OLLA_URL: http://olla:40114
       API_LISTEN: ":8080"
       SYSTEM_PROMPT_FILE: /config/system-prompt.md
+      SG_API_ENDPOINT: ${SG_API_ENDPOINT}
+      SG_API_KEY: ${SG_API_KEY}
     volumes:
       - ./system-prompt.md:/config/system-prompt.md:ro
     depends_on:

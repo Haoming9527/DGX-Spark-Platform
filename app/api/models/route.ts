@@ -44,6 +44,7 @@ export async function GET() {
     const response = await fetch(`${base}/olla/ollama/api/tags`, {
       method: "GET",
       headers,
+      cache: "no-store",
       signal: AbortSignal.timeout(10000),
     });
 
@@ -70,7 +71,10 @@ export async function GET() {
       );
     }
 
-    return NextResponse.json({ ...data, models });
+    return NextResponse.json(
+      { ...data, models },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   } catch (error: unknown) {
     if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
       return NextResponse.json(

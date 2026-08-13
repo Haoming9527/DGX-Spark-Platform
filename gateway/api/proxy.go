@@ -22,7 +22,11 @@ func newOllaProxy(ollaURL *url.URL) *httputil.ReverseProxy {
 	proxy.Director = func(r *http.Request) {
 		originalDirector(r)
 		if strings.HasPrefix(r.URL.Path, "/v1/") || r.URL.Path == "/v1" {
-			r.URL.Path = "/olla/proxy" + r.URL.Path
+			if requestHasVision(r) {
+				r.URL.Path = "/olla/ollama" + r.URL.Path
+			} else {
+				r.URL.Path = "/olla/proxy" + r.URL.Path
+			}
 		}
 		r.Host = ollaURL.Host
 		r.Header.Del("Authorization")

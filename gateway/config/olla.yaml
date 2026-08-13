@@ -1,13 +1,11 @@
-# Olla — DGX Spark Platform inference gateway
-# Docs: https://thushan.github.io/olla/configuration/reference/
-# Node list is config/env only — no hard-coded routing in application code.
+# Olla — https://thushan.github.io/olla/configuration/reference/
 
 server:
   host: "0.0.0.0"
   port: 40114
   read_timeout: 30s
   read_header_timeout: 10s
-  write_timeout: 0s # required for streaming
+  write_timeout: 0s # streaming
   shutdown_timeout: 30s
   request_logging: true
   cors:
@@ -35,12 +33,12 @@ proxy:
   connection_keep_alive: 30s
   response_timeout: 15m
   read_timeout: 10m
-  response_header_timeout: 120s # remote nodes may cold-load models
+  response_header_timeout: 120s # cold model load
   tls_handshake_timeout: 15s
   retry:
     enabled: true
     on_connection_failure: true
-    max_attempts: 0 # try all eligible healthy endpoints once (pre-stream)
+    max_attempts: 0
 
 discovery:
   type: "static"
@@ -49,10 +47,6 @@ discovery:
     initial_delay: 2s
   static:
     endpoints:
-      # First node — Singapore DGX Spark (Ollama behind Cloudflare/Caddy)
-      # Add more endpoints below with unique names; no code changes required.
-      # Node base URL: write the real URL here (Olla does not expand ${VAR} in url).
-      # Secrets stay in env via ${SG_API_KEY}.
       - url: "https://sg.dgxspark.dev"
         name: "sg.dgxspark.dev"
         type: "ollama"
@@ -67,8 +61,8 @@ discovery:
           header: "X-API-Key"
   model_discovery:
     enabled: true
-    interval: 2m
-    timeout: 30s
+    interval: 15s
+    timeout: 10s
     concurrent_workers: 5
     retry_attempts: 3
     retry_backoff: 2s
@@ -77,12 +71,12 @@ model_registry:
   type: "memory"
   enable_unifier: true
   unification:
-    stale_threshold: 24h
-    cleanup_interval: 10m
+    stale_threshold: 30s
+    cleanup_interval: 15s
+    cache_ttl: 10s
   routing_strategy:
     type: "strict"
     options:
-      # Never silently substitute a different model
       fallback_behavior: "compatible_only"
       discovery_timeout: 3s
       discovery_refresh_on_miss: true

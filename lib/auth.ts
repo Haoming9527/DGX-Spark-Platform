@@ -38,21 +38,17 @@ export function verifyToken(token: string): UserSession | null {
     }
     return null;
   } catch {
-    // Token expired, invalid signature, or malformed — all treated the same
     return null;
   }
 }
 
 export function getSession(req: NextRequest): UserSession | null {
-  // Try Cookie first (browser sessions)
   const cookieToken = req.cookies.get("token")?.value;
   if (cookieToken) {
     const session = verifyToken(cookieToken);
     if (session) return session;
   }
 
-  // Try Authorization header (API key holders using Bearer JWT — not to be
-  // confused with user API keys, which are looked up directly in the DB)
   const authHeader = req.headers.get("authorization");
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const token = authHeader.substring(7).trim();

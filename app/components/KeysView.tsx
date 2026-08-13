@@ -63,7 +63,7 @@ export function KeysView({
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <div className="bg-panel border border-border rounded-lg sm:rounded-xl p-4 sm:p-5 space-y-4">
+      <div className="sticker space-y-4 rounded-xl p-4 sm:rounded-2xl sm:p-5">
         <h2 className="text-sm font-bold flex items-center gap-2">
           <Plus className="w-4 h-4 text-nvidia-green" /> Create New Key
         </h2>
@@ -116,7 +116,7 @@ export function KeysView({
         </div>
       )}
 
-      <div className="bg-panel border border-border rounded-lg sm:rounded-xl overflow-hidden">
+      <div className="sticker overflow-hidden rounded-xl sm:rounded-2xl">
         <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border/50 flex items-center justify-between">
           <h2 className="text-sm font-bold">Active Keys</h2>
           <span className="text-xs text-foreground/40 tabular-nums">{keys.length} / 20</span>
@@ -200,7 +200,7 @@ export function KeysView({
                   </div>
                   <div className="min-w-0">
                     <code className="max-w-full text-xs font-mono text-foreground/50 bg-background border border-border/50 rounded px-2 py-0.5 truncate lg:max-w-[180px] inline-block">
-                      {key.key_prefix}...
+                      {key.key_prefix}
                     </code>
                   </div>
                   <div className="text-sm text-foreground/60 tabular-nums flex justify-between lg:block">

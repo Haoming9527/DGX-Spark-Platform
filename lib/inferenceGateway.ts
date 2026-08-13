@@ -1,5 +1,3 @@
-/** Public inference gateway (API front-door + Olla). All app traffic goes here — not direct to nodes. */
-
 export function getInferenceGatewayBase(): string | null {
   const raw = process.env.INFERENCE_GATEWAY_URL?.trim();
   if (!raw) return null;

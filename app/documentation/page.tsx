@@ -1,38 +1,53 @@
-import Image from "next/image";
 import Link from "next/link";
 import { Key } from "lucide-react";
 import { DocsView } from "../components/DocsView";
+import { LogoMark } from "../components/ui/LogoMark";
+import { ThemeToggle } from "../components/ui/ThemeToggle";
 
 export default function DocumentationPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans">
-      <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md px-4 md:px-8 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="inline-flex items-center gap-2.5 transition-opacity hover:opacity-90">
-            <Image src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7 object-contain" />
-            <span className="text-[15px] font-semibold tracking-tight">
-              DGX Spark <span className="font-medium text-foreground/45">Docs</span>
-            </span>
-          </Link>
-        </div>
+    <div className="min-h-screen font-sans text-foreground">
+      <header className="sticky top-0 z-50">
+        <div className="mx-auto max-w-7xl px-6 py-3 md:px-8">
+          <div className="px-5 md:px-6">
+            <div className="flex items-center justify-between gap-2 lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-8">
+              <div className="flex items-center gap-2 lg:justify-start">
+                <LogoMark href="/" size={22} />
+                <span className="sticker-sm hidden h-9 items-center px-3 sm:inline-flex">
+                  <span className="font-display text-[14px] font-bold tracking-[0.02em] text-foreground">
+                    Docs
+                  </span>
+                </span>
+              </div>
 
-        <Link
-          href="/apikeys/manage"
-          className="flex items-center gap-2 px-3 py-2 bg-panel hover:bg-panel-hover border border-border hover:border-nvidia-green/50 rounded-lg text-sm font-semibold transition-colors"
-        >
-          <Key className="w-4 h-4 text-nvidia-green" />
-          Get API key
-        </Link>
+              <div className="flex items-center justify-end gap-1.5 sm:gap-2">
+                <ThemeToggle />
+                <Link
+                  href="/apikeys/manage"
+                  className="sticker-sm sticker-cta inline-flex h-9 items-center gap-1.5 px-3 text-[13px] font-semibold transition-[filter] hover:brightness-105"
+                >
+                  <Key className="h-3.5 w-3.5" strokeWidth={2.25} />
+                  <span className="hidden min-[400px]:inline">Get API key</span>
+                  <span className="min-[400px]:hidden">API</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-6 md:p-8 space-y-6">
-        <div className="border-b border-border/50 pb-4">
-          <h1 className="text-2xl font-bold tracking-tight">Developer Documentation</h1>
-          <p className="text-sm text-foreground/50 mt-1">
+      <main className="mx-auto max-w-7xl space-y-6 p-6 md:p-8">
+        <div className="sticker px-5 py-4">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
+            Developer Documentation
+          </h1>
+          <p className="mt-1 text-sm text-muted">
             OpenAI-compatible API for models on DGX Spark.
           </p>
         </div>
-        <DocsView />
+        <div className="sticker p-5 md:p-6">
+          <DocsView />
+        </div>
       </main>
     </div>
   );

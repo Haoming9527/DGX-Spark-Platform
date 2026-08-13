@@ -2,16 +2,17 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Image from "next/image";
-import { X, Loader2, Ticket, User, Mail, Lock, LogIn, UserPlus } from "lucide-react";
+import { Ticket, User, Mail, Lock, LogIn, UserPlus } from "lucide-react";
+import { LogoMark } from "./ui/LogoMark";
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (user: { id: string; username: string; email: string }) => void;
+  embedded?: boolean;
 }
 
-export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
+export function AuthModal({ isOpen, onClose, onSuccess, embedded = false }: AuthModalProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -47,8 +48,19 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const raw = await res.text();
+      let data: { error?: string; user?: { id: string; username: string; email: string } } = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(
+          res.status === 404
+            ? "Auth API not found. Restart the Next.js dev server and try again."
+            : `Unexpected response (${res.status}).`
+        );
+      }
       if (!res.ok) throw new Error(data.error || "Something went wrong.");
+      if (!data.user) throw new Error("Login succeeded but no user returned.");
       onSuccess(data.user);
       onClose();
     } catch (err: unknown) {
@@ -58,211 +70,229 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.94, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.94, y: 20 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        className="w-full max-w-[380px] bg-panel border border-border/80 rounded-2xl shadow-2xl overflow-hidden relative"
-      >
-        {/* Close Button: Elevated to root level of modal cards to prevent overlap from inner relative container divs */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-foreground/30 hover:text-foreground/70 transition-colors p-1.5 rounded-lg hover:bg-white/5 cursor-pointer z-50 animate-fade-in"
-          aria-label="Close modal"
-        >
-          <X className="w-4 h-4" />
-        </button>
-
-        {/* ── Branded header ─────────────────────────────────────────────── */}
-        <div className="relative border-b border-border/50 px-6 pb-4 pt-5">
-          <div className="relative flex items-center gap-3">
-            <Image src="/logo.svg" alt="" width={36} height={36} className="h-9 w-9 object-contain" />
-            <div>
-              <div className="mb-0.5 text-[11px] font-medium uppercase tracking-wider text-foreground/40">
-                DGX Spark Platform
-              </div>
-              <AnimatePresence mode="wait">
-                <motion.h2
-                  key={isLogin ? "login" : "signup"}
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.15 }}
-                  className="text-lg font-semibold leading-tight tracking-tight text-foreground"
-                >
-                  {isLogin ? "Welcome back" : "Create account"}
-                </motion.h2>
-              </AnimatePresence>
-            </div>
-          </div>
-
-          <div className="relative mt-4 flex gap-1 rounded-full bg-foreground/[0.04] p-1 ring-1 ring-border/60">
-            <button
-              onClick={() => switchMode(true)}
-              className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full py-1.5 text-xs font-semibold transition-all ${
-                isLogin
-                  ? "bg-panel text-foreground shadow-sm ring-1 ring-border/70"
-                  : "text-foreground/40 hover:text-foreground/70"
-              }`}
-            >
-              <LogIn className="h-3.5 w-3.5" />
-              Sign In
-            </button>
-            <button
-              onClick={() => switchMode(false)}
-              className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full py-1.5 text-xs font-semibold transition-all ${
-                !isLogin
-                  ? "bg-panel text-foreground shadow-sm ring-1 ring-border/70"
-                  : "text-foreground/40 hover:text-foreground/70"
-              }`}
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              Sign Up
-            </button>
+  const card = (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 8 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      className="sticker relative w-full max-w-[400px] overflow-hidden !rounded-[1.35rem]"
+    >
+      <div className="flex items-start justify-between gap-3 border-b border-[var(--sticker-edge)] px-5 pb-4 pt-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <LogoMark size={26} />
+          <div className="min-w-0">
+            <p className="text-[12px] font-medium text-muted">DGX Spark</p>
+            <AnimatePresence mode="wait">
+              <motion.h2
+                key={isLogin ? "login" : "signup"}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.15 }}
+                className="font-display text-[1.35rem] font-bold tracking-tight text-foreground"
+              >
+                {isLogin ? "Welcome back" : "Create account"}
+              </motion.h2>
+            </AnimatePresence>
           </div>
         </div>
+        {!embedded && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="exit-sign shrink-0 scale-90 origin-top-right"
+            aria-label="Close"
+          >
+            <span className="exit-sign-face !px-2.5 !py-1.5">
+              <span className="exit-sign-arrow" aria-hidden />
+              <span className="exit-sign-word !text-[0.9rem]">EXIT</span>
+            </span>
+          </button>
+        )}
+      </div>
 
-        {/* ── Form body ──────────────────────────────────────────────────── */}
-        <div className="px-6 py-4">
-          {/* Error */}
-          <AnimatePresence>
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-3 px-3.5 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium overflow-hidden"
-              >
-                {error}
-              </motion.div>
-            )}
-          </AnimatePresence>
+      <div className="px-5 pb-5 pt-4">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => switchMode(true)}
+            aria-pressed={isLogin}
+            className={`sticker-sm inline-flex h-9 items-center gap-1.5 px-3.5 text-[13px] font-semibold transition-[filter] hover:brightness-110 ${
+              isLogin ? "sticker-cta" : "text-muted hover:text-foreground"
+            }`}
+          >
+            <LogIn className="h-3.5 w-3.5" strokeWidth={2.25} />
+            Sign in
+          </button>
+          <button
+            type="button"
+            onClick={() => switchMode(false)}
+            aria-pressed={!isLogin}
+            className={`sticker-sm inline-flex h-9 items-center gap-1.5 px-3.5 text-[13px] font-semibold transition-[filter] hover:brightness-110 ${
+              !isLogin ? "sticker-cta" : "text-muted hover:text-foreground"
+            }`}
+          >
+            <UserPlus className="h-3.5 w-3.5" strokeWidth={2.25} />
+            Sign up
+          </button>
+        </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={isLogin ? "login-fields" : "signup-fields"}
-                initial={{ opacity: 0, x: isLogin ? -10 : 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="flex flex-col gap-3"
-              >
-                {/* Username & Referral Code side by side (signup only) */}
-                {!isLogin ? (
-                  <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Username" icon={<User className="w-4 h-4" />}>
-                        <input
-                          type="text"
-                          required
-                          autoComplete="username"
-                          value={username}
-                          onChange={(e) => setUsername(e.target.value)}
-                          placeholder="john_doe"
-                          minLength={3}
-                          maxLength={50}
-                          className={INPUT_CLS}
-                        />
-                      </Field>
-                      <Field label="Referral Code" icon={<Ticket className="w-4 h-4" />}>
-                        <input
-                          type="text"
-                          required
-                          value={referralCode}
-                          onChange={(e) => setReferralCode(e.target.value)}
-                          placeholder="Invite code"
-                          className={INPUT_CLS}
-                        />
-                      </Field>
-                    </div>
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-3 overflow-hidden rounded-xl border border-alert/30 bg-alert/10 px-3.5 py-2.5 text-[13px] font-medium text-alert"
+            >
+              {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-                    <Field label="Email Address" icon={<Mail className="w-4 h-4" />}>
-                      <input
-                        type="email"
-                        required
-                        autoComplete="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="john@example.com"
-                        className={INPUT_CLS}
-                      />
-                    </Field>
-
-                    <Field label="Password" icon={<Lock className="w-4 h-4" />}>
-                      <input
-                        type="password"
-                        required
-                        autoComplete="new-password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        minLength={8}
-                        maxLength={128}
-                        className={INPUT_CLS}
-                      />
-                    </Field>
-                  </>
-                ) : (
-                  <>
-                    <Field label="Username or Email" icon={<User className="w-4 h-4" />}>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={isLogin ? "login-fields" : "signup-fields"}
+              initial={{ opacity: 0, x: isLogin ? -8 : 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex flex-col gap-3.5"
+            >
+              {!isLogin ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Username" icon={<User className="h-4 w-4" strokeWidth={2} />}>
                       <input
                         type="text"
                         required
                         autoComplete="username"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        placeholder="username or email"
+                        placeholder="john_doe"
+                        minLength={3}
+                        maxLength={50}
                         className={INPUT_CLS}
                       />
                     </Field>
-
-                    <Field label="Password" icon={<Lock className="w-4 h-4" />}>
+                    <Field label="Invite code" icon={<Ticket className="h-4 w-4" strokeWidth={2} />}>
                       <input
-                        type="password"
+                        type="text"
                         required
-                        autoComplete="current-password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        minLength={1}
-                        maxLength={128}
+                        value={referralCode}
+                        onChange={(e) => setReferralCode(e.target.value)}
+                        placeholder="Code"
                         className={INPUT_CLS}
                       />
                     </Field>
-                  </>
-                )}
-              </motion.div>
-            </AnimatePresence>
+                  </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2 mt-2 bg-nvidia-green text-black font-bold rounded-xl text-sm hover:bg-nvidia-green/90 active:scale-[0.98] transition-all shadow-lg shadow-nvidia-green/15 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {loading ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
-              ) : isLogin ? (
-                <><LogIn className="w-4 h-4" /> Sign In</>
+                  <Field label="Email" icon={<Mail className="h-4 w-4" strokeWidth={2} />}>
+                    <input
+                      type="email"
+                      required
+                      autoComplete="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className={INPUT_CLS}
+                    />
+                  </Field>
+
+                  <Field label="Password" icon={<Lock className="h-4 w-4" strokeWidth={2} />}>
+                    <input
+                      type="password"
+                      required
+                      autoComplete="new-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="At least 8 characters"
+                      minLength={8}
+                      maxLength={128}
+                      className={INPUT_CLS}
+                    />
+                  </Field>
+                </>
               ) : (
-                <><UserPlus className="w-4 h-4" /> Create Account</>
+                <>
+                  <Field label="Username or email" icon={<User className="h-4 w-4" strokeWidth={2} />}>
+                    <input
+                      type="text"
+                      required
+                      autoComplete="username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="username or email"
+                      className={INPUT_CLS}
+                    />
+                  </Field>
+
+                  <Field label="Password" icon={<Lock className="h-4 w-4" strokeWidth={2} />}>
+                    <input
+                      type="password"
+                      required
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Your password"
+                      minLength={1}
+                      maxLength={128}
+                      className={INPUT_CLS}
+                    />
+                  </Field>
+                </>
               )}
-            </button>
-          </form>
-        </div>
-      </motion.div>
+            </motion.div>
+          </AnimatePresence>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="sticker-sm sticker-cta mt-1 inline-flex h-11 w-full items-center justify-center gap-2 text-[14px] font-semibold transition-[filter] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? (
+              <>
+                <LogoMark size={16} bare className="logo-spin" />
+                <span>{isLogin ? "Signing in…" : "Creating…"}</span>
+              </>
+            ) : isLogin ? (
+              <>
+                <LogIn className="h-4 w-4" strokeWidth={2.25} />
+                Sign in
+              </>
+            ) : (
+              <>
+                <UserPlus className="h-4 w-4" strokeWidth={2.25} />
+                Create account
+              </>
+            )}
+          </button>
+        </form>
+
+        <p className="mt-4 text-center text-[11px] text-muted">
+          Invite-only · Chat isn&apos;t saved
+        </p>
+      </div>
+    </motion.div>
+  );
+
+  if (embedded) {
+    return card;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+      {card}
     </div>
   );
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 const INPUT_CLS =
-  "w-full pl-10 pr-4 py-2 bg-background border border-border rounded-xl text-sm text-foreground " +
-  "placeholder:text-foreground/20 focus:border-nvidia-green/50 focus:ring-1 focus:ring-nvidia-green/10 " +
-  "outline-none transition-all";
+  "w-full rounded-xl border border-[var(--sticker-edge)] bg-panel py-2.5 pl-10 pr-3.5 text-sm text-foreground " +
+  "outline-none transition-[border-color,box-shadow] placeholder:text-muted/70 " +
+  "focus:border-nvidia-green/50 focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--nvidia-green)_18%,transparent)]";
 
 function Field({
   label,
@@ -274,10 +304,12 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[11px] font-semibold text-foreground/50 uppercase tracking-wider">{label}</label>
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[12px] font-medium text-muted">{label}</label>
       <div className="relative">
-        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-foreground/30 pointer-events-none z-10">{icon}</div>
+        <div className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-[#6366f1]">
+          {icon}
+        </div>
         {children}
       </div>
     </div>

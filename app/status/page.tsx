@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { RefreshCw, Router, Cpu } from "lucide-react";
+import { ExitBack } from "../components/ui/ExitBack";
+import { LogoMark } from "../components/ui/LogoMark";
+import { ThemeToggle } from "../components/ui/ThemeToggle";
 
 type ServerEndpoint = {
   name: string;
@@ -59,9 +60,14 @@ function Dot({ state }: { state: ComponentState }) {
       : state === "degraded"
         ? "bg-amber-400"
         : state === "outage"
-          ? "bg-red-500/80"
-          : "bg-foreground/30";
-  return <span className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${color}`} />;
+          ? "bg-alert"
+          : "bg-muted";
+  return (
+    <span
+      className={`mt-1.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full ${color}`}
+      aria-hidden
+    />
+  );
 }
 
 function overallCopy(payload: StatusPayload | null): {
@@ -147,124 +153,139 @@ export default function StatusPage() {
   const gatewayHost = data?.gateway_host?.trim() || "Not configured";
 
   return (
-    <div className="min-h-[100svh] bg-background font-sans text-foreground">
-      <header className="border-b border-border/70">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-5 py-4">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 text-[13px] text-foreground/55 transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} />
-            Chat
-          </Link>
-          <button
-            type="button"
-            onClick={load}
-            disabled={loading}
-            className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[13px] text-foreground/55 transition-colors hover:bg-foreground/[0.05] hover:text-foreground disabled:opacity-40"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} strokeWidth={1.75} />
-            Refresh
-          </button>
+    <div className="min-h-[100svh] font-sans text-foreground">
+      <header className="px-4 pt-4 sm:px-5">
+        <div className="sticker mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-2 !rounded-2xl px-2 py-2 sm:px-3">
+          <ExitBack href="/" />
+          <div className="flex flex-wrap items-center gap-2">
+            <ThemeToggle />
+            <button
+              type="button"
+              onClick={load}
+              disabled={loading}
+              className="sticker-sm inline-flex items-center gap-2 px-3 py-1.5 text-[13px] text-muted transition-[filter] hover:brightness-110 hover:text-foreground disabled:opacity-40"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 text-[#14b8a6] ${loading ? "animate-spin" : ""}`} strokeWidth={2.25} />
+              Refresh
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-2xl px-5 pb-20 pt-12">
-        <div className="mb-10 flex flex-col items-center text-center">
-          <Image
-            src="/logo.svg"
-            alt=""
-            width={40}
-            height={40}
-            className="mb-4 h-10 w-10 object-contain"
-            priority
-          />
-          <p className="text-[13px] font-medium tracking-tight text-foreground/45">
-            DGX Spark Platform
-          </p>
-          <h1 className="mt-3 text-[28px] font-medium tracking-tight">System status</h1>
-          <p className="mt-2 max-w-[32ch] text-[15px] leading-relaxed text-foreground/45">
-            Live health for gateway and AI servers.
-          </p>
+      <main className="mx-auto max-w-2xl px-5 pb-20 pt-10">
+        <div className="mb-8 flex items-center gap-4">
+          <LogoMark size={28} />
+          <div className="sticker !rounded-xl px-4 py-2">
+            <h1 className="font-display text-2xl font-bold uppercase tracking-[0.04em]">Status</h1>
+            <p className="text-[13px] text-muted">DGX Spark Platform</p>
+          </div>
         </div>
 
         <section
-          className={`mb-10 rounded-2xl border px-5 py-5 ${
+          className={`sticker mb-8 px-5 py-5 ${
             overall.state === "operational"
-              ? "border-nvidia-green/25 bg-nvidia-green/[0.06]"
+              ? "!border-nvidia-green/40"
               : overall.state === "degraded"
-                ? "border-amber-400/25 bg-amber-400/[0.06]"
+                ? "!border-amber-400/50"
                 : overall.state === "outage"
-                  ? "border-red-500/20 bg-red-500/[0.05]"
-                  : "border-border bg-foreground/[0.02]"
+                  ? "!border-alert/50"
+                  : ""
           }`}
         >
           <div className="flex items-start gap-3">
             <Dot state={overall.state} />
             <div>
-              <h2 className="text-[17px] font-medium tracking-tight">{overall.title}</h2>
-              <p className="mt-1 text-[14px] leading-relaxed text-foreground/55">{overall.detail}</p>
+              <h2 className="font-display text-[1.2rem] font-bold uppercase tracking-[0.03em]">
+                {overall.title}
+              </h2>
+              <p className="mt-1 text-[14px] leading-relaxed text-muted">{overall.detail}</p>
               {checked && (
-                <p className="mt-3 text-[12px] text-foreground/35">Updated {checked}</p>
+                <p className="mt-3 font-mono text-[12px] text-muted">Updated {checked}</p>
               )}
             </div>
           </div>
         </section>
 
         <section>
-          <h3 className="mb-3 text-[13px] font-medium uppercase tracking-[0.08em] text-foreground/35">
-            Components
-          </h3>
-          <div className="overflow-hidden rounded-2xl border border-border/80">
-            <ComponentRow
-              title="Inference gateway"
+          <h3 className="mb-3 text-[13px] font-medium text-muted">Components</h3>
+          <div className="flex flex-col gap-3">
+            <ComponentCard
+              kind="gateway"
+              title="Gateway"
               host={gatewayHost}
+              desc="Inference"
               state={gatewayState}
             />
             {data?.gateway === "ready" && servers.length === 0 && (
-              <ComponentRow title="AI servers" host="None configured" state="unknown" />
+              <ComponentCard
+                kind="ai"
+                title="AI servers"
+                host="None configured"
+                desc="No endpoints"
+                state="unknown"
+              />
             )}
             {data?.gateway !== "ready" && (
-              <div className="border-t border-border/80 px-4 py-4 text-[13px] text-foreground/40">
+              <div className="sticker px-4 py-4 text-[13px] text-muted">
                 AI server health is unavailable while the gateway is offline.
               </div>
             )}
             {servers.map((s, i) => (
-              <ComponentRow
+              <ComponentCard
                 key={`${s.host || s.name}-${i}`}
+                kind="ai"
                 title="AI server"
                 host={s.host || s.name}
+                desc={stateLabel(toComponentState(s.status, "server"))}
                 state={toComponentState(s.status, "server")}
               />
             ))}
           </div>
         </section>
 
-        <p className="mt-12 text-center text-[11px] text-foreground/30">
-          Not affiliated with NVIDIA
-        </p>
+        <p className="mt-12 text-center text-[11px] text-muted">Not affiliated with NVIDIA</p>
       </main>
     </div>
   );
 }
 
-function ComponentRow({
+function ComponentCard({
+  kind,
   title,
   host,
+  desc,
   state,
 }: {
+  kind: "gateway" | "ai";
   title: string;
   host: string;
+  desc: string;
   state: ComponentState;
 }) {
+  const lamp =
+    state === "operational"
+      ? "bg-nvidia-green"
+      : state === "degraded"
+        ? "bg-amber-400"
+        : state === "outage"
+          ? "bg-alert"
+          : "bg-muted";
+
   return (
-    <div className="flex items-start gap-3 border-t border-border/80 px-4 py-4 first:border-t-0">
-      <Dot state={state} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[15px] font-medium tracking-tight">{host}</div>
-        <div className="mt-0.5 text-[13px] text-foreground/40">{title}</div>
+    <div className="sticker-dark grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3.5">
+      <span className="icon-sticker" aria-hidden>
+        {kind === "gateway" ? (
+          <Router className="h-5 w-5 text-[#ff5c5c]" strokeWidth={2.25} />
+        ) : (
+          <Cpu className="h-5 w-5 text-nvidia-green" strokeWidth={2.25} />
+        )}
+      </span>
+      <div className="min-w-0">
+        <div className="font-display text-[1.05rem] font-bold uppercase tracking-[0.03em]">{title}</div>
+        <div className="mt-0.5 truncate font-mono text-[13px] text-[#b0b0b0]">{host}</div>
+        <div className="mt-0.5 text-[13px] text-[#8a8a8a]">{desc}</div>
       </div>
-      <div className="shrink-0 pt-0.5 text-[13px] text-foreground/55">{stateLabel(state)}</div>
+      <span className={`h-2.5 w-2.5 rounded-full ${lamp}`} aria-hidden />
     </div>
   );
 }

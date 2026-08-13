@@ -1,11 +1,7 @@
-# Example cloudflared config for api.dgxspark.dev → Go API front-door.
-# Install cloudflared on the gateway VM (GCP / Oracle / any VPS), then:
-#
-#   cloudflared tunnel create dgx-api
-#   cloudflared tunnel route dns dgx-api api.dgxspark.dev
-#   sudo cloudflared service install
-#
-# Keep www.dgxspark.dev on Vercel — do not point www at this tunnel.
+# api.dgxspark.dev → Go API. Keep www.dgxspark.dev on Vercel.
+# cloudflared tunnel create dgx-api
+# cloudflared tunnel route dns dgx-api api.dgxspark.dev
+# sudo cloudflared service install
 
 tunnel: <TUNNEL_UUID>
 credentials-file: /etc/cloudflared/<TUNNEL_UUID>.json

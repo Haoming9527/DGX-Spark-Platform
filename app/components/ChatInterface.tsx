@@ -2,19 +2,22 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Image from "next/image";
-import { Message, ModelItem } from "../types/chat";
+import { ChatImage, Message, ModelItem } from "../types/chat";
 import { Header } from "./Header";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { AuthModal } from "./AuthModal";
-import { LogOut, TriangleAlert, X, Loader2 } from "lucide-react";
+import { LogOut, TriangleAlert, X, Loader2, Router } from "lucide-react";
 import Link from "next/link";
+import { LogoMark } from "./ui/LogoMark";
+import { ModelStickers } from "./ui/ModelStickers";
+import { splitAssistantText } from "../../lib/splitThinking";
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [useReasoning, setUseReasoning] = useState(false);
+  const [pendingImages, setPendingImages] = useState<ChatImage[]>([]);
   const [models, setModels] = useState<ModelItem[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [modelsLoading, setModelsLoading] = useState(true);
@@ -65,17 +68,18 @@ export function ChatInterface() {
     }
   };
 
-  const fetchModels = async () => {
-    setModelsLoading(true);
-    setIsOffline(false);
-    setIsSleeping(false);
+  const fetchModels = async (silent = false) => {
+    if (!silent) {
+      setModelsLoading(true);
+      setIsOffline(false);
+      setIsSleeping(false);
+    }
     try {
-      const res = await fetch("/api/models");
+      const res = await fetch("/api/models", { cache: "no-store" });
       const data = await res.json();
 
       if (data.error === "OFFLINE") {
         setIsOffline(true);
-        setModelsLoading(false);
         return;
       }
 
@@ -83,39 +87,69 @@ export function ChatInterface() {
         setIsSleeping(true);
         setModels([]);
         setSelectedModel("");
-        setModelsLoading(false);
         return;
       }
 
       if (data.models && Array.isArray(data.models)) {
         const loadedModels: ModelItem[] = data.models
           .filter((m: { name: string }) => !m.name.toLowerCase().includes("embed"))
-          .map((m: { name: string }) => ({
-            id: m.name,
-            name: m.name.charAt(0).toUpperCase() + m.name.slice(1),
-          }));
+          .map((m: { name: string; capabilities?: unknown; details?: { parameter_size?: string } }) => {
+            const caps = Array.isArray(m.capabilities)
+              ? m.capabilities.map((c) => String(c).toLowerCase())
+              : [];
+            return {
+              id: m.name,
+              name: m.name.charAt(0).toUpperCase() + m.name.slice(1),
+              parameterSize: m.details?.parameter_size ?? null,
+              capabilities: caps,
+              thinking: caps.includes("thinking"),
+              vision: caps.includes("vision"),
+              tools: caps.includes("tools"),
+              embedding: caps.includes("embedding"),
+              audio: caps.includes("audio"),
+            };
+          });
+        setIsOffline(false);
+        setIsSleeping(loadedModels.length === 0);
         setModels(loadedModels);
         if (loadedModels.length > 0) {
           const preferred = "qwen3.6:35b-a3b";
-          const match = loadedModels.find(
-            (m: ModelItem) => m.id === preferred || m.id.toLowerCase() === preferred
-          );
-          setSelectedModel(match?.id || loadedModels[0].id);
+          setSelectedModel((current) => {
+            if (current && loadedModels.some((m: ModelItem) => m.id === current)) {
+              return current;
+            }
+            const match = loadedModels.find(
+              (m: ModelItem) => m.id === preferred || m.id.toLowerCase() === preferred
+            );
+            return match?.id || loadedModels[0].id;
+          });
         } else {
-          setIsSleeping(true);
+          setSelectedModel("");
         }
       }
     } catch (error) {
       console.error("Failed to fetch models", error);
-      setIsOffline(true);
+      if (!silent) setIsOffline(true);
     } finally {
-      setModelsLoading(false);
+      if (!silent) setModelsLoading(false);
     }
   };
 
   useEffect(() => {
     fetchModels();
   }, []);
+
+  const selectedCaps = models.find((m) => m.id === selectedModel);
+  const canThink = Boolean(selectedCaps?.thinking);
+  const canSee = Boolean(selectedCaps?.vision);
+
+  useEffect(() => {
+    if (!canThink && useReasoning) setUseReasoning(false);
+  }, [canThink, useReasoning]);
+
+  useEffect(() => {
+    if (!canSee) setPendingImages([]);
+  }, [canSee]);
 
   useEffect(() => {
     const el = chatScrollRef.current;
@@ -132,7 +166,6 @@ export function ChatInterface() {
     if (!stickToBottomRef.current) return;
     const el = chatScrollRef.current;
     if (!el) return;
-    // Instant jump while streaming — smooth scroll on every token causes shake
     el.scrollTop = el.scrollHeight;
   }, [messages]);
 
@@ -149,10 +182,7 @@ export function ChatInterface() {
     setMessages([]);
   };
 
-  const streamAssistant = async (
-    history: { role: string; content: string }[],
-    assistantMessageId: string
-  ) => {
+  const streamAssistant = async (history: Message[], assistantMessageId: string) => {
     setIsLoading(true);
     abortControllerRef.current = new AbortController();
 
@@ -162,30 +192,65 @@ export function ChatInterface() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: selectedModel,
-          useReasoning,
-          messages: history,
+          useReasoning: canThink && useReasoning,
+          messages: toChatHistory(history, canSee),
         }),
         signal: abortControllerRef.current.signal,
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error("Failed to fetch response");
-      }
-
       const contentType = response.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const data = await response.json();
-        const note =
-          data.error === "SLEEPING"
-            ? "DGX Spark is sleeping — no AI servers online."
-            : data.error === "OFFLINE"
-              ? "Inference gateway is offline."
-              : data.message || data.error || "Chat request failed";
-        if (data.error === "SLEEPING") setIsSleeping(true);
-        if (data.error === "OFFLINE") setIsOffline(true);
+      const isJson = contentType.includes("application/json");
+
+      if (!response.ok || isJson) {
+        let note = "Chat request failed.";
+        let code = "";
+        let capability = "";
+        if (isJson) {
+          const data = await response.json();
+          code = typeof data.error === "string" ? data.error : "";
+          capability = typeof data.capability === "string" ? data.capability : "";
+          note =
+            code === "SLEEPING"
+              ? "DGX Spark is sleeping — no AI servers online."
+              : code === "OFFLINE"
+                ? "Inference gateway is offline."
+                : code === "MODEL_UNAVAILABLE"
+                  ? data.message || "That model is not installed on DGX Spark. Choose another model."
+                  : code === "MODEL_CAPABILITY"
+                    ? data.message || "This model does not support that feature."
+                    : data.message || data.error || note;
+        } else {
+          const text = await response.text();
+          if (response.status === 404 || /not found/i.test(text)) {
+            code = "MODEL_UNAVAILABLE";
+            note = selectedModel
+              ? `${selectedModel} is not installed on DGX Spark. Choose another model.`
+              : "That model is not installed on DGX Spark. Choose another model.";
+          } else {
+            note = text.trim() || `Request failed (${response.status}).`;
+          }
+        }
+        if (code === "SLEEPING") setIsSleeping(true);
+        if (code === "OFFLINE") setIsOffline(true);
+        if (code === "MODEL_UNAVAILABLE") void fetchModels(true);
+        if (code === "MODEL_CAPABILITY") {
+          if (capability === "thinking") setUseReasoning(false);
+          if (capability === "vision") setPendingImages([]);
+        }
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId ? { ...msg, content: note, isThinking: false } : msg
+          )
+        );
+        return;
+      }
+
+      if (!response.body) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, content: "Empty response from DGX Spark.", isThinking: false }
+              : msg
           )
         );
         return;
@@ -206,23 +271,13 @@ export function ChatInterface() {
       };
 
       const applyDisplayFromBuffers = () => {
-        let rContent = streamedContent;
-        let rThought = streamedThinking;
-        let rIsThinking = streamedThinking.length > 0 && streamedContent.length === 0;
-
-        if (!streamedThinking && streamedContent.includes("<think>")) {
-          if (streamedContent.includes("</think>")) {
-            const thinkMatch = streamedContent.match(/<think>([\s\S]*?)<\/think>/);
-            if (thinkMatch) rThought = thinkMatch[1].trim();
-            rContent = streamedContent.replace(/<think>[\s\S]*?<\/think>/, "").trim();
-            rIsThinking = false;
-          } else {
-            const parts = streamedContent.split("<think>");
-            rContent = parts[0].trim();
-            rThought = parts[1] || "";
-            rIsThinking = true;
-          }
-        }
+        const parsed = splitAssistantText(streamedContent);
+        const rThought = [streamedThinking, parsed.thought]
+          .map((part) => part.trim())
+          .filter(Boolean)
+          .join("\n\n");
+        const rContent = parsed.content;
+        const rIsThinking = parsed.isThinking || (rThought.length > 0 && rContent.length === 0);
 
         updateAssistant({
           content: rContent,
@@ -276,7 +331,6 @@ export function ChatInterface() {
           if (data.message?.content) streamedContent += data.message.content;
           applyDisplayFromBuffers();
         } catch {
-          // ignore
         }
       }
     } catch (error: unknown) {
@@ -287,7 +341,10 @@ export function ChatInterface() {
             msg.id === assistantMessageId
               ? {
                   ...msg,
-                  content: msg.content + "\n\n**Error: Failed to connect to DGX Spark backend.**",
+                  content: msg.content?.trim()
+                    ? `${msg.content}\n\nCould not reach DGX Spark.`
+                    : "Could not reach DGX Spark.",
+                  isThinking: false,
                 }
               : msg
           )
@@ -301,26 +358,35 @@ export function ChatInterface() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading || !selectedModel) return;
+    const text = input.trim();
+    const images = canSee ? pendingImages.map((p) => p.dataUrl) : [];
+    if ((!text && images.length === 0) || isLoading || !selectedModel) return;
+    if (models.length > 0 && !models.some((m) => m.id === selectedModel)) {
+      void fetchModels(true);
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: input.trim(),
+      content: text,
+      ...(images.length ? { images } : {}),
     };
     const history = [...messages, userMessage];
     const assistantMessageId = (Date.now() + 1).toString();
 
     setInput("");
+    setPendingImages([]);
     setMessages([...history, { id: assistantMessageId, role: "assistant", content: "" }]);
-    await streamAssistant(
-      history.map((m) => ({ role: m.role, content: m.content })),
-      assistantMessageId
-    );
+    await streamAssistant(history, assistantMessageId);
   };
 
   const handleRetry = async (assistantId: string) => {
     if (isLoading || !selectedModel) return;
+    if (models.length > 0 && !models.some((m) => m.id === selectedModel)) {
+      void fetchModels(true);
+      return;
+    }
     const idx = messages.findIndex((m) => m.id === assistantId);
     if (idx <= 0) return;
 
@@ -332,20 +398,22 @@ export function ChatInterface() {
       ...prefix,
       { id: newAssistantId, role: "assistant", content: "" },
     ]);
-    await streamAssistant(
-      prefix.map((m) => ({ role: m.role, content: m.content })),
-      newAssistantId
-    );
+    await streamAssistant(prefix, newAssistantId);
   };
 
   return (
-    <div className="flex h-[100svh] max-h-[100svh] flex-col overflow-hidden bg-background font-sans text-foreground sm:h-dvh sm:max-h-dvh">
+    <div className="relative flex h-[100svh] max-h-[100svh] flex-col overflow-hidden font-sans text-foreground sm:h-dvh sm:max-h-dvh">
       <Header
         models={models}
         selectedModel={selectedModel}
         modelsLoading={modelsLoading}
+        isOffline={isOffline}
+        isSleeping={isSleeping}
         isDropdownOpen={isDropdownOpen}
-        setIsDropdownOpen={setIsDropdownOpen}
+        setIsDropdownOpen={(open) => {
+          if (open) void fetchModels(true);
+          setIsDropdownOpen(open);
+        }}
         setSelectedModel={setSelectedModel}
         clearChat={clearChat}
         user={user}
@@ -353,15 +421,18 @@ export function ChatInterface() {
         onLogout={() => setIsLogoutConfirmOpen(true)}
       />
 
-      <main
-        ref={chatScrollRef}
-        className={`min-h-0 flex-1 px-3 py-3 sm:px-4 sm:py-6 md:px-8 ${
-          messages.length === 0 ? "overflow-hidden" : "overflow-y-auto"
-        }`}
-      >
+      <div className="relative min-h-0 flex-1">
+        <ModelStickers docked={messages.length > 0} />
+
+        <main
+          ref={chatScrollRef}
+          className={`relative z-[2] h-full min-h-0 px-3 py-3 sm:px-4 sm:py-6 md:px-8 ${
+            messages.length === 0 ? "overflow-hidden" : "overflow-y-auto"
+          }`}
+        >
         <div
           className={`mx-auto flex max-w-3xl flex-col gap-6 sm:gap-7 ${
-            messages.length === 0 ? "h-full pb-0" : "pb-36 sm:pb-28"
+            messages.length === 0 ? "h-full justify-center pb-36 sm:pb-32" : "pb-36 sm:pb-28"
           }`}
         >
           {messages.length === 0 ? (
@@ -375,22 +446,17 @@ export function ChatInterface() {
               ) : isSleeping ? (
                 <SleepingState onRetry={fetchModels} />
               ) : (
-                <>
-                  <Image
-                    src="/logo.svg"
-                    alt=""
-                    width={52}
-                    height={52}
-                    className="mb-6 h-[52px] w-[52px] object-contain sm:mb-8"
-                    priority
-                  />
-                  <h2 className="mb-2 text-balance text-2xl font-semibold tracking-tight sm:text-[1.75rem]">
+                <div className="sticker relative mx-auto max-w-[13.5rem] px-3.5 py-3.5 text-center sm:max-w-[18rem] sm:px-5 sm:py-5">
+                  <div className="mb-2 flex items-center justify-center sm:mb-3">
+                    <LogoMark size={24} />
+                  </div>
+                  <h2 className="font-display text-balance text-base font-bold uppercase tracking-[0.03em] sm:text-[1.35rem]">
                     How can I help you today?
                   </h2>
-                  <p className="max-w-sm text-pretty text-sm leading-relaxed text-foreground/45 sm:text-[15px]">
-                    Local models on DGX Spark. Pick a model above and start a conversation.
+                  <p className="mt-1.5 text-pretty text-[12px] leading-relaxed text-muted sm:mt-2 sm:text-[13px]">
+                    Local models on DGX Spark.
                   </p>
-                </>
+                </div>
               )}
             </motion.div>
           ) : (
@@ -425,7 +491,12 @@ export function ChatInterface() {
         stopGeneration={stopGeneration}
         useReasoning={useReasoning}
         setUseReasoning={setUseReasoning}
+        canThink={canThink}
+        canSee={canSee}
+        pendingImages={pendingImages}
+        setPendingImages={setPendingImages}
       />
+      </div>
 
       <AnimatePresence>
         {isAuthModalOpen && (
@@ -450,97 +521,89 @@ export function ChatInterface() {
   );
 }
 
+function toOllamaB64(dataUrl: string) {
+  const i = dataUrl.indexOf(",");
+  return i >= 0 ? dataUrl.slice(i + 1) : dataUrl;
+}
+
+function toChatHistory(history: Message[], includeImages: boolean) {
+  return history.map((m) => {
+    const item: { role: string; content: string; images?: string[] } = {
+      role: m.role,
+      content: m.content,
+    };
+    if (includeImages && m.role === "user" && m.images?.length) {
+      item.images = m.images.map(toOllamaB64);
+    }
+    return item;
+  });
+}
+
 function SleepingState({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center px-6 text-center">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-        className="mb-7"
-      >
-        <Image src="/logo.svg" alt="" width={52} height={52} className="mx-auto h-[52px] w-[52px] object-contain" />
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.06, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-        className="max-w-[22rem]"
-      >
-        <h2 className="text-balance text-[22px] font-medium tracking-tight sm:text-2xl">
-          DGX Spark is sleeping
-        </h2>
-        <p className="mt-3 text-pretty text-[15px] leading-relaxed text-foreground/50">
-          Power on your AI server, then come back here.
-        </p>
-        <div className="mt-7 flex flex-col items-center gap-3">
-          <button
-            type="button"
-            onClick={onRetry}
-            className="cursor-pointer text-[14px] font-medium text-foreground/70 underline-offset-4 transition-colors hover:text-foreground hover:underline"
-          >
-            Try again
-          </button>
-          <Link
-            href="/status"
-            className="text-[13px] text-foreground/40 transition-colors hover:text-foreground/65"
-          >
-            View status
-          </Link>
-        </div>
-      </motion.div>
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      className="sticker-dark relative mx-auto max-w-[12.75rem] px-3.5 py-3.5 text-center sm:max-w-[17rem] sm:px-5 sm:py-5"
+    >
+      <div className="mb-2 flex items-center justify-center sm:mb-3">
+        <LogoMark size={24} />
+      </div>
+      <h2 className="font-display text-balance text-base font-bold uppercase tracking-[0.05em] sm:text-lg">
+        Sleeping
+      </h2>
+      <p className="mt-1.5 text-pretty text-[12px] leading-relaxed text-[#a8a8a8] sm:mt-2 sm:text-[13px]">
+        Power on your AI server, then come back.
+      </p>
+      <div className="mt-3 flex flex-col items-center gap-1.5 sm:mt-4 sm:gap-2">
+        <button
+          type="button"
+          onClick={onRetry}
+          className="sticker-sm cursor-pointer px-2.5 py-1 text-[12px] font-semibold text-foreground transition-[filter] hover:brightness-110 sm:px-3 sm:py-1.5 sm:text-[13px]"
+        >
+          Try again
+        </button>
+        <Link href="/status" className="text-[11px] text-[#8a8a8a] transition-colors hover:text-nvidia-green sm:text-[12px]">
+          View status
+        </Link>
+      </div>
+    </motion.div>
   );
 }
 
 function OfflineState({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center px-6 text-center">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-        className="mb-7"
-      >
-        <Image
-          src="/logo.svg"
-          alt=""
-          width={52}
-          height={52}
-          className="mx-auto h-[52px] w-[52px] object-contain opacity-70 grayscale"
-        />
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.06, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-        className="max-w-[22rem]"
-      >
-        <h2 className="text-balance text-[22px] font-medium tracking-tight sm:text-2xl">
-          Gateway is offline
-        </h2>
-        <p className="mt-3 text-pretty text-[15px] leading-relaxed text-foreground/50">
-          We can&apos;t reach the inference gateway right now.
-        </p>
-        <div className="mt-7 flex flex-col items-center gap-3">
-          <button
-            type="button"
-            onClick={onRetry}
-            className="cursor-pointer text-[14px] font-medium text-foreground/70 underline-offset-4 transition-colors hover:text-foreground hover:underline"
-          >
-            Try again
-          </button>
-          <Link
-            href="/status"
-            className="text-[13px] text-foreground/40 transition-colors hover:text-foreground/65"
-          >
-            View status
-          </Link>
-        </div>
-      </motion.div>
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      className="sticker relative mx-auto max-w-[12.75rem] px-3.5 py-3.5 text-center sm:max-w-[17rem] sm:px-5 sm:py-5"
+    >
+      <div className="mb-2 flex items-center justify-center sm:mb-3">
+        <span className="icon-sticker !h-8 !w-8 sm:!h-9 sm:!w-9" aria-hidden>
+          <Router className="h-4 w-4 text-[#ff5c5c] sm:h-5 sm:w-5" strokeWidth={2.25} />
+        </span>
+      </div>
+      <h2 className="font-display text-balance text-base font-bold uppercase tracking-[0.04em] sm:text-lg">
+        Offline
+      </h2>
+      <p className="mt-1.5 text-pretty text-[12px] leading-relaxed text-muted sm:mt-2 sm:text-[13px]">
+        Can&apos;t reach the inference gateway right now.
+      </p>
+      <div className="mt-3 flex flex-col items-center gap-1.5 sm:mt-4 sm:gap-2">
+        <button
+          type="button"
+          onClick={onRetry}
+          className="sticker-sm cursor-pointer px-2.5 py-1 text-[12px] font-medium text-foreground transition-[filter] hover:brightness-110 sm:px-3 sm:py-1.5 sm:text-[13px]"
+        >
+          Try again
+        </button>
+        <Link href="/status" className="text-[11px] text-muted transition-colors hover:text-nvidia-green sm:text-[12px]">
+          View status
+        </Link>
+      </div>
+    </motion.div>
   );
 }
 
@@ -560,7 +623,7 @@ function ConfirmLogoutDialog({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.92, y: 16 }}
         transition={{ duration: 0.18 }}
-        className="w-full max-w-sm overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl"
+        className="sticker w-full max-w-sm overflow-hidden !rounded-2xl"
       >
         <div className="flex items-start justify-between p-5 pb-0">
           <div className="flex items-center gap-3">
