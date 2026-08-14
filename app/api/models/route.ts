@@ -1,16 +1,16 @@
-import { NextResponse } from "next/server";
-import { gatewayAuthHeaders, requireInferenceGateway } from "../../../lib/inferenceGateway";
+import { NextRequest, NextResponse } from "next/server";
+import { gatewayAuthHeaders } from "../../../lib/inferenceGateway";
+import { inferenceKeyForRequest } from "../../../lib/inferenceKey";
 
-export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 type CapacityStatus = {
   status?: string;
 };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const { base, apiKey } = requireInferenceGateway();
+    const { base, apiKey } = await inferenceKeyForRequest(req);
     const headers = gatewayAuthHeaders(apiKey);
 
     const statusRes = await fetch(`${base}/status`, {

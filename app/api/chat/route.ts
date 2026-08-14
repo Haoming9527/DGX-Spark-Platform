@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
-import { gatewayAuthHeaders, requireInferenceGateway } from "../../../lib/inferenceGateway";
+import { gatewayAuthHeaders } from "../../../lib/inferenceGateway";
+import { inferenceKeyForRequest } from "../../../lib/inferenceKey";
 
-export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
     const { messages, model, useReasoning } = await req.json();
-    const { base, apiKey } = requireInferenceGateway();
+    const { base, apiKey } = await inferenceKeyForRequest(req);
 
     const payload: Record<string, unknown> = {
       model: model || "qwen3.6:35b-a3b",
@@ -43,13 +43,11 @@ export async function POST(req: NextRequest) {
           { status: 200, headers: jsonHeaders }
         );
       }
-      if (response.status === 404 || /model ['"][^'"]+['"] not found/i.test(upstream)) {
-        const named =
-          upstream.match(/model ['"]([^'"]+)['"]/i)?.[1] || model || "that model";
+      if (response.status === 404 || /model ['"][^'"]+['"] not found/i.test(upstream) || /model not found/i.test(upstream)) {
         return new Response(
           JSON.stringify({
             error: "MODEL_UNAVAILABLE",
-            message: `${named} is not installed on DGX Spark. Choose another model.`,
+            message: "That model is not available. Choose another model.",
           }),
           { status: 200, headers: jsonHeaders }
         );
@@ -59,7 +57,7 @@ export async function POST(req: NextRequest) {
           JSON.stringify({
             error: "MODEL_CAPABILITY",
             capability: "thinking",
-            message: `${model || "This model"} does not support thinking. Turn it off or pick another model.`,
+            message: "This model does not support thinking. Turn it off or pick another model.",
           }),
           { status: 200, headers: jsonHeaders }
         );
@@ -69,12 +67,12 @@ export async function POST(req: NextRequest) {
           JSON.stringify({
             error: "MODEL_CAPABILITY",
             capability: "vision",
-            message: `${model || "This model"} does not accept images. Remove attachments or pick a vision model.`,
+            message: "This model does not accept images. Remove attachments or pick a vision model.",
           }),
           { status: 200, headers: jsonHeaders }
         );
       }
-      console.error(`Gateway Error: ${response.status}`, upstream);
+      console.error(`Gateway Error: ${response.status}`);
       return new Response(
         JSON.stringify({
           error: "UPSTREAM",

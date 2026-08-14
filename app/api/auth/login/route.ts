@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { comparePassword, hashPassword, generateToken, getSession } from "../../../../lib/auth";
+import { loadAccount, publicUser } from "../../../../lib/account";
+
+function sessionCookie(response: NextResponse, token: string) {
+  response.cookies.set("token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 7,
+    path: "/",
+  });
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,7 +19,11 @@ export async function GET(req: NextRequest) {
     if (!session) {
       return NextResponse.json({ authenticated: false }, { status: 200 });
     }
-    return NextResponse.json({ authenticated: true, user: session }, { status: 200 });
+    const account = await loadAccount(session.userId);
+    if (!account || account.disabled) {
+      return NextResponse.json({ authenticated: false }, { status: 200 });
+    }
+    return NextResponse.json({ authenticated: true, user: publicUser(account) }, { status: 200 });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal server error";
     return NextResponse.json({ error: msg }, { status: 500 });
@@ -39,10 +54,17 @@ export async function POST(req: NextRequest) {
       where: {
         OR: [{ username: clean }, { email: clean.toLowerCase() }],
       },
-      select: { id: true, username: true, email: true, passwordHash: true },
+      select: { id: true, username: true, email: true, passwordHash: true, disabledAt: true },
     });
 
     if (!user) {
+      return NextResponse.json(
+        { error: "Invalid username/email or password." },
+        { status: 401 }
+      );
+    }
+
+    if (user.disabledAt) {
       return NextResponse.json(
         { error: "Invalid username/email or password." },
         { status: 401 }
@@ -65,7 +87,6 @@ export async function POST(req: NextRequest) {
             where: { id: user.id },
             data: { passwordHash: hashed },
           });
-          console.log(`Auto-hashed plaintext password reset for user ${user.username}`);
         } catch (err) {
           console.error("Failed to update plaintext password reset:", err);
         }
@@ -79,29 +100,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const account = await loadAccount(user.id);
+    if (!account || account.disabled) {
+      return NextResponse.json(
+        { error: "Invalid username/email or password." },
+        { status: 401 }
+      );
+    }
+
     const token = generateToken({
-      userId: user.id,
-      username: user.username,
-      email: user.email,
+      userId: account.id,
+      username: account.username,
+      email: account.email,
+      role: account.role,
     });
 
     const response = NextResponse.json({
       message: "Login successful",
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-      },
+      user: publicUser(account),
     });
-
-    response.cookies.set("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
-      path: "/",
-    });
-
+    sessionCookie(response, token);
     return response;
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal server error";

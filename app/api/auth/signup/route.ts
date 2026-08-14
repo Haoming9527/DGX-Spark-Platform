@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "../../../../lib/prisma";
 import { hashPassword, generateToken } from "../../../../lib/auth";
+import { loadAccount, publicUser } from "../../../../lib/account";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -85,19 +86,21 @@ export async function POST(req: NextRequest) {
       select: { id: true, username: true, email: true },
     });
 
+    const account = await loadAccount(newUser.id);
+    if (!account) {
+      return NextResponse.json({ error: "Failed to create user." }, { status: 500 });
+    }
+
     const token = generateToken({
-      userId: newUser.id,
-      username: newUser.username,
-      email: newUser.email,
+      userId: account.id,
+      username: account.username,
+      email: account.email,
+      role: account.role,
     });
 
     const response = NextResponse.json({
       message: "Registration successful",
-      user: {
-        id: newUser.id,
-        username: newUser.username,
-        email: newUser.email,
-      },
+      user: publicUser(account),
     });
 
     response.cookies.set("token", token, {

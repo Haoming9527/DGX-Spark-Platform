@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { getSession } from "../../../../lib/auth";
+import { filterUsageModels, type ModelUsageRow } from "../../../../lib/usageModels";
 
 const TIMEFRAME_MINUTES = {
   "1h": 60,
@@ -50,7 +51,29 @@ export async function GET(req: NextRequest) {
        GROUP BY k.id
     `;
 
-    return NextResponse.json({ usage });
+    const byModelRaw = await prisma.$queryRaw<ModelUsageRow[]>`
+      SELECT
+          COALESCE(u.model, '') AS model,
+          COUNT(u.id)::int AS requests,
+          COALESCE(SUM(u.tokens), 0)::float8 AS tokens
+       FROM api_keys k
+       JOIN api_key_usage u
+          ON u.key_id = k.id
+         AND u.timestamp >= NOW() - make_interval(mins => ${minutes})
+       WHERE k.user_id = ${session.userId}::uuid
+       GROUP BY u.model
+       ORDER BY requests DESC
+    `;
+    const byModel = await filterUsageModels(
+      session.userId,
+      byModelRaw.map((row) => ({
+        model: row.model || "Unknown",
+        requests: row.requests,
+        tokens: row.tokens,
+      })),
+    );
+
+    return NextResponse.json({ usage, byModel });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal server error";
     console.error("GET api_keys/usage-summary error:", error);

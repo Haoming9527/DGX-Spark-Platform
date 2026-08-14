@@ -41,6 +41,7 @@ export function UsageView({ keys, keysLoading }: UsageViewProps) {
   const selectedApiId = searchParams.get("api");
   const [timeRange, setTimeRange] = useState<7 | 14 | 30>(14);
   const [chartData, setChartData] = useState<DailyMetric[]>([]);
+  const [byModel, setByModel] = useState<{ model: string; requests: number; tokens: number }[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const selectedKey = useMemo(() => {
     return keys.find((item) => item.id === selectedApiId) || null;
@@ -67,11 +68,13 @@ export function UsageView({ keys, keysLoading }: UsageViewProps) {
         })
         .then((data) => {
           setChartData(data.chartData || []);
+          setByModel(Array.isArray(data.byModel) ? data.byModel : []);
         })
         .catch((err: unknown) => {
           if (err instanceof DOMException && err.name === "AbortError") return;
           console.error("Error loading usage data:", err);
           setChartData([]);
+          setByModel([]);
         })
         .finally(() => {
           clearTimeout(timer);
@@ -101,11 +104,13 @@ export function UsageView({ keys, keysLoading }: UsageViewProps) {
         selectedKey={selectedKey}
         onBackClick={() => {
           setChartData([]);
+          setByModel([]);
           router.push("/apikeys/usage");
         }}
         timeRange={timeRange}
         setTimeRange={setTimeRange}
         chartData={chartData}
+        byModel={byModel}
         loading={chartLoading}
       />
     );
