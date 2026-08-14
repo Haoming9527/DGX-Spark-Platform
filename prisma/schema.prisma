@@ -12,12 +12,14 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  username     String   @unique @db.VarChar(50)
-  email        String   @unique @db.VarChar(255)
-  passwordHash String   @map("password_hash") @db.VarChar(255)
-  referralCode String   @map("referral_code") @db.VarChar(100)
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username     String    @unique @db.VarChar(50)
+  email        String    @unique @db.VarChar(255)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  referralCode String    @map("referral_code") @db.VarChar(100)
+  role         String    @default("user") @db.VarChar(16)
+  disabledAt   DateTime? @map("disabled_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   apiKeys      ApiKey[]
 
   @@map("users")
@@ -46,8 +48,31 @@ model ApiKeyUsage {
   promptTokens     BigInt   @default(0) @map("prompt_tokens")
   completionTokens BigInt   @default(0) @map("completion_tokens")
   statusCode       Int      @map("status_code")
+  model            String?  @db.VarChar(256)
   apiKey           ApiKey   @relation(fields: [keyId], references: [id], onDelete: Cascade)
 
   @@index([keyId, timestamp(sort: Desc)], map: "idx_api_key_usage_key_timestamp")
+  @@index([keyId, model, timestamp(sort: Desc)], map: "idx_api_key_usage_key_model_ts")
   @@map("api_key_usage")
+}
+
+model RestrictedModel {
+  modelName String   @id @map("model_name") @db.VarChar(256)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("restricted_models")
+}
+
+model RestrictedAccessAudit {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  at         DateTime @default(now()) @db.Timestamptz(6)
+  userId     String?  @map("user_id") @db.Uuid
+  keyId      String?  @map("key_id") @db.Uuid
+  modelName  String   @map("model_name") @db.VarChar(256)
+  action     String   @db.VarChar(16)
+  statusCode Int      @map("status_code")
+  path       String   @db.VarChar(512)
+
+  @@index([at(sort: Desc)], map: "idx_restricted_access_audit_at")
+  @@map("restricted_access_audit")
 }

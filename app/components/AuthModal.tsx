@@ -8,7 +8,7 @@ import { LogoMark } from "./ui/LogoMark";
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (user: { id: string; username: string; email: string }) => void;
+  onSuccess: (user: { id: string; username: string; email: string; role?: string }) => void;
   embedded?: boolean;
 }
 

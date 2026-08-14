@@ -16,7 +16,7 @@ export async function comparePassword(password: string, hash: string): Promise<b
   return bcrypt.compare(password, hash);
 }
 
-export function generateToken(payload: { userId: string; username: string; email: string }): string {
+export function generateToken(payload: { userId: string; username: string; email: string; role?: string }): string {
   return jwt.sign(payload, JWT_SECRET!, { expiresIn: "7d" });
 }
 
@@ -24,16 +24,23 @@ export interface UserSession {
   userId: string;
   username: string;
   email: string;
+  role?: string;
 }
 
 export function verifyToken(token: string): UserSession | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET!) as { userId?: string; username?: string; email?: string } | string;
+    const decoded = jwt.verify(token, JWT_SECRET!) as {
+      userId?: string;
+      username?: string;
+      email?: string;
+      role?: string;
+    } | string;
     if (decoded && typeof decoded !== "string" && decoded.userId && decoded.username && decoded.email) {
       return {
         userId: decoded.userId,
         username: decoded.username,
         email: decoded.email,
+        role: decoded.role === "admin" ? "admin" : "user",
       };
     }
     return null;

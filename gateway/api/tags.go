@@ -48,14 +48,17 @@ func liveModelListKind(r *http.Request) (string, bool) {
 	}
 }
 
-func writeLiveModelList(w http.ResponseWriter, ollaBase *url.URL, kind string) {
+func writeLiveModelList(w http.ResponseWriter, ollaBase *url.URL, kind string, restricted map[string]struct{}, admin bool) {
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-	models, err := fetchLiveOllamaModels(ollaBase)
+	models, err := fetchLiveOllamaModelsRaw(ollaBase)
 	if err != nil {
 		log.Printf("live model list: %v", err)
 		writeOpenAIError(w, http.StatusBadGateway, "Failed to list models from AI servers.", "server_error", nil)
 		return
 	}
+	models = filterModelsByAllowlist(models, restricted, admin)
+	endpoints, _ := listHealthyOllamaEndpoints(ollaBase)
+	models = attachCapabilities(models, endpoints)
 	if kind == "openai" {
 		data := make([]map[string]any, 0, len(models))
 		for _, m := range models {
@@ -79,7 +82,7 @@ func writeLiveModelList(w http.ResponseWriter, ollaBase *url.URL, kind string) {
 	writeJSON(w, http.StatusOK, ollamaTagsResponse{Models: models})
 }
 
-func fetchLiveOllamaModels(ollaBase *url.URL) ([]map[string]any, error) {
+func fetchLiveOllamaModelsRaw(ollaBase *url.URL) ([]map[string]any, error) {
 	endpoints, err := listHealthyOllamaEndpoints(ollaBase)
 	if err != nil {
 		return nil, err
@@ -89,7 +92,7 @@ func fetchLiveOllamaModels(ollaBase *url.URL) ([]map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return attachCapabilities(models, nil), nil
+		return models, nil
 	}
 
 	type result struct {
@@ -130,7 +133,7 @@ func fetchLiveOllamaModels(ollaBase *url.URL) ([]map[string]any, error) {
 	}
 	if ok == 0 {
 		if catalog, fallbackErr := fetchOllaTags(ollaBase); fallbackErr == nil && len(catalog) > 0 {
-			return attachCapabilities(catalog, endpoints), nil
+			return catalog, nil
 		}
 		if fetchErr != nil {
 			return nil, fetchErr
@@ -147,7 +150,7 @@ func fetchLiveOllamaModels(ollaBase *url.URL) ([]map[string]any, error) {
 	for _, name := range names {
 		out = append(out, merged[name])
 	}
-	return attachCapabilities(out, endpoints), nil
+	return out, nil
 }
 
 func attachCapabilities(models []map[string]any, endpoints []ollaEndpoint) []map[string]any {

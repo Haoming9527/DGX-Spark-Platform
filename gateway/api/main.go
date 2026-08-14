@@ -19,10 +19,14 @@ func main() {
 	ollaURLRaw := envOr("OLLA_URL", "http://127.0.0.1:40114")
 	databaseURL := os.Getenv("DATABASE_URL")
 	chatServiceKey := os.Getenv("CHAT_SERVICE_KEY")
+	adminServiceKey := os.Getenv("ADMIN_SERVICE_KEY")
 	promptStore := loadSystemPromptStore(envOr("SYSTEM_PROMPT_FILE", "/config/system-prompt.md"))
 
 	if databaseURL == "" && chatServiceKey == "" {
 		log.Fatal("DATABASE_URL and/or CHAT_SERVICE_KEY is required")
+	}
+	if chatServiceKey != "" && adminServiceKey != "" && chatServiceKey == adminServiceKey {
+		log.Fatal("ADMIN_SERVICE_KEY must differ from CHAT_SERVICE_KEY")
 	}
 
 	ollaURL, err := url.Parse(ollaURLRaw)
@@ -51,45 +55,85 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorize(r.Context(), pool, chatServiceKey, r); !ok {
+		if ident := authorize(r.Context(), pool, chatServiceKey, adminServiceKey, r); !ident.ok {
 			writeOpenAIError(w, http.StatusUnauthorized, "Invalid API key.", "invalid_request_error", strPtr("invalid_api_key"))
 			return
 		}
 		writeCapacityStatus(w, ollaURL)
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		keyID, ok := authorize(r.Context(), pool, chatServiceKey, r)
-		if !ok {
+		ident := authorize(r.Context(), pool, chatServiceKey, adminServiceKey, r)
+		if !ident.ok {
 			writeOpenAIError(w, http.StatusUnauthorized, "Invalid API key.", "invalid_request_error", strPtr("invalid_api_key"))
 			return
 		}
-		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-		if kind, ok := liveModelListKind(r); ok {
-			writeLiveModelList(rec, ollaURL, kind)
-		} else {
-			if shouldInjectSystemPrompt(r) {
-				if err := injectSystemPrompt(r, promptStore.get()); err != nil {
-					log.Printf("system prompt inject failed: %v", err)
-					writeOpenAIError(w, http.StatusBadRequest, "Invalid request body.", "invalid_request_error", nil)
+		admin := ident.role == "admin"
+		requestedModel := peekRequestModel(r)
+		gate := loadGate(r.Context(), pool, ollaURL, admin)
+		if gate.failClosed {
+			if kind, ok := liveModelListKind(r); ok {
+				if admin {
+					writeLiveModelList(w, ollaURL, kind, map[string]struct{}{}, true)
 					return
 				}
-				prepared, err := prepareChatPayload(r)
-				if err != nil {
-					writeOpenAIError(w, http.StatusBadRequest, err.Error(), "invalid_request_error", nil)
+				w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+				if kind == "openai" {
+					writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": []any{}})
 					return
 				}
-				r = prepared
-				prepared, err = prepareStructuredOutput(r)
-				if err != nil {
-					writeOpenAIError(w, http.StatusBadRequest, err.Error(), "invalid_request_error", nil)
-					return
-				}
-				r = prepared
+				writeJSON(w, http.StatusOK, ollamaTagsResponse{Models: []map[string]any{}})
+				return
 			}
-			proxy.ServeHTTP(rec, r)
+			writeLocalModelNotFound(w)
+			return
 		}
-		if keyID != "" && pool != nil {
-			go logUsage(context.Background(), pool, keyID, rec.status)
+
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		usageModel := ""
+		if kind, ok := liveModelListKind(r); ok {
+			writeLiveModelList(rec, ollaURL, kind, gate.restricted, admin)
+		} else {
+			restrictedHit := requestedModel != "" && isRestrictedName(requestedModel, gate.restricted)
+			allowed := requestedModel != "" && modelOnAllowlist(requestedModel, gate.live, gate.restricted, admin)
+			if !allowed {
+				if restrictedHit {
+					go auditRestricted(context.Background(), pool, ident, requestedModel, "deny", r.URL.Path, http.StatusNotFound)
+				}
+				writeLocalModelNotFound(rec)
+			} else {
+				if restrictedHit {
+					go auditRestricted(context.Background(), pool, ident, requestedModel, "allow", r.URL.Path, http.StatusOK)
+				}
+				usageModel = requestedModel
+				isChat := shouldInjectSystemPrompt(r)
+				if isChat && !restrictedHit {
+					if err := injectSystemPrompt(r, promptStore.get()); err != nil {
+						log.Printf("system prompt inject failed: %v", err)
+						writeOpenAIError(rec, http.StatusBadRequest, "Invalid request body.", "invalid_request_error", nil)
+						isChat = false
+						r = nil
+					}
+				}
+				if r != nil && isChat {
+					prepared, err := prepareChatPayload(r)
+					if err != nil {
+						writeOpenAIError(rec, http.StatusBadRequest, err.Error(), "invalid_request_error", nil)
+					} else {
+						r = prepared
+						prepared, err = prepareStructuredOutput(r)
+						if err != nil {
+							writeOpenAIError(rec, http.StatusBadRequest, err.Error(), "invalid_request_error", nil)
+						} else {
+							proxy.ServeHTTP(rec, prepared)
+						}
+					}
+				} else if r != nil {
+					proxy.ServeHTTP(rec, r)
+				}
+			}
+		}
+		if ident.keyID != "" && pool != nil {
+			go logUsage(context.Background(), pool, ident.keyID, rec.status, usageModel)
 		}
 	})
 
@@ -100,8 +144,8 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("dgx-api listening on %s → %s (chat service key: %v, db: %v)",
-			listenAddr, ollaURLRaw, chatServiceKey != "", pool != nil)
+		log.Printf("dgx-api listening on %s → %s (chat service key: %v, admin service key: %v, db: %v)",
+			listenAddr, ollaURLRaw, chatServiceKey != "", adminServiceKey != "", pool != nil)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal(err)
 		}

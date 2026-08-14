@@ -12,6 +12,7 @@ import {
   BookOpen,
   LogIn,
   Activity,
+  Shield,
 } from "lucide-react";
 import { ModelItem } from "../types/chat";
 import { LogoMark } from "./ui/LogoMark";
@@ -28,7 +29,7 @@ interface HeaderProps {
   setIsDropdownOpen: (open: boolean) => void;
   setSelectedModel: (id: string) => void;
   clearChat: () => void;
-  user: { id: string; username: string; email: string } | null;
+  user: { id: string; username: string; email: string; role?: string } | null;
   onAuthClick: () => void;
   onLogout: () => void;
   onSidebarToggle?: () => void;
@@ -98,6 +99,16 @@ export function Header({
 
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
           <ThemeToggle />
+
+          {user?.role === "admin" && (
+            <Link
+              href="/admin/users"
+              className="sticker-sm inline-flex h-9 w-9 items-center justify-center transition-[filter] hover:brightness-110"
+              title="Admin"
+            >
+              <Shield className="h-4 w-4 text-nvidia-green" strokeWidth={2.25} />
+            </Link>
+          )}
 
           <Link
             href="/status"

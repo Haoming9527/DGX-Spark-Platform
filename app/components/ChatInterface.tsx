@@ -25,7 +25,7 @@ export function ChatInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [isSleeping, setIsSleeping] = useState(false);
-  const [user, setUser] = useState<{ id: string; username: string; email: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; username: string; email: string; role?: string } | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
@@ -138,6 +138,12 @@ export function ChatInterface() {
   useEffect(() => {
     fetchModels();
   }, []);
+
+  useEffect(() => {
+    if (user?.role === "admin") {
+      void fetchModels(true);
+    }
+  }, [user?.role]);
 
   const selectedCaps = models.find((m) => m.id === selectedModel);
   const canThink = Boolean(selectedCaps?.thinking);
