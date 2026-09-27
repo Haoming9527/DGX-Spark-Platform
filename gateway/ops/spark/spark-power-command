@@ -1,0 +1,12 @@
+#!/bin/sh
+# Installed root-owned. The SSH key may invoke only these two commands.
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+exec </dev/null
+
+case "${SSH_ORIGINAL_COMMAND:-}" in
+    status) exec /usr/bin/sudo -n /usr/local/sbin/spark-power-helper status ;;
+    shutdown) exec /usr/bin/sudo -n /usr/local/sbin/spark-power-helper shutdown ;;
+    *) printf '%s\n' 'Only status and shutdown are permitted.' >&2; exit 64 ;;
+esac

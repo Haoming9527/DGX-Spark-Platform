@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
-import { comparePassword, hashPassword, generateToken, getSession } from "../../../../lib/auth";
+import { comparePassword, hashPassword, generateToken, getSession, applySessionCookie, clearSessionCookie } from "../../../../lib/auth";
 import { loadAccount, publicUser } from "../../../../lib/account";
+import { clientKey, takeRateLimit } from "../../../../lib/rateLimit";
 
 function sessionCookie(response: NextResponse, token: string) {
-  response.cookies.set("token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7,
-    path: "/",
-  });
+  applySessionCookie(response, token);
 }
 
 export async function GET(req: NextRequest) {
@@ -21,7 +16,9 @@ export async function GET(req: NextRequest) {
     }
     const account = await loadAccount(session.userId);
     if (!account || account.disabled) {
-      return NextResponse.json({ authenticated: false }, { status: 200 });
+      const response = NextResponse.json({ authenticated: false }, { status: 200 });
+      clearSessionCookie(response);
+      return response;
     }
     return NextResponse.json({ authenticated: true, user: publicUser(account) }, { status: 200 });
   } catch (error: unknown) {
@@ -32,6 +29,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!takeRateLimit(`login:${clientKey(req)}`, { limit: 10, windowMs: 15 * 60 * 1000 })) {
+      return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
+    }
+
     const { identifier, password } = await req.json();
 
     if (!identifier || !password) {
@@ -130,10 +131,6 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE() {
   const response = NextResponse.json({ message: "Logout successful" });
-  response.cookies.set("token", "", {
-    httpOnly: true,
-    expires: new Date(0),
-    path: "/",
-  });
+  clearSessionCookie(response);
   return response;
 }

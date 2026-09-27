@@ -13,6 +13,7 @@ import {
   LogIn,
   Activity,
   Shield,
+  Power,
 } from "lucide-react";
 import { ModelItem } from "../types/chat";
 import { LogoMark } from "./ui/LogoMark";
@@ -74,7 +75,7 @@ export function Header({
           : "idle";
 
   return (
-    <header className="sticky top-0 z-[100] flex flex-none px-3 py-3 sm:px-4 font-sans">
+    <header className="sticky top-0 z-[100] flex min-h-[3.75rem] flex-none px-3 py-3 font-sans sm:px-4">
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {onSidebarToggle && (
@@ -86,7 +87,7 @@ export function Header({
               <Menu className="h-4 w-4 text-[#5b6cff]" strokeWidth={2} />
             </button>
           )}
-          <LogoMark href="/" size={22} />
+          <LogoMark href="/" size={22} priority />
           <Link
             href="/"
             className="sticker-sm hidden h-9 items-center px-3 transition-[filter] hover:brightness-110 sm:inline-flex"
@@ -107,6 +108,17 @@ export function Header({
               title="Admin"
             >
               <Shield className="h-4 w-4 text-nvidia-green" strokeWidth={2.25} />
+            </Link>
+          )}
+
+          {user?.role === "operator" && (
+            <Link
+              href="/spark-power"
+              className="sticker-sm inline-flex h-9 items-center justify-center gap-1.5 px-3 text-[13px] font-semibold transition-[filter] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground"
+              title="Spark Power"
+            >
+              <Power className="h-4 w-4 text-nvidia-green" strokeWidth={2.25} aria-hidden="true" />
+              <span>Spark Power</span>
             </Link>
           )}
 
@@ -169,7 +181,7 @@ export function Header({
             <button
               onClick={() => !modelsLoading && !modelUnavailable && setIsDropdownOpen(!isDropdownOpen)}
               disabled={modelsLoading || modelUnavailable}
-              className="sticker-sm flex h-9 max-w-[11.5rem] cursor-pointer items-center gap-2 px-2.5 text-[13px] font-medium text-foreground transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-[16rem] sm:px-3"
+              className="sticker-sm flex h-9 w-[11.5rem] cursor-pointer items-center gap-2 px-2.5 text-[13px] font-medium text-foreground transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:w-[16rem] sm:px-3"
               title={statusLabel || selectedModel || "Select model"}
             >
               {modelsLoading ? (

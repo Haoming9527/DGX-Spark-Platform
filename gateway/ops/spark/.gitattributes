@@ -1,0 +1,2 @@
+# These scripts run on Linux even when prepared from a Windows checkout.
+* text eol=lf

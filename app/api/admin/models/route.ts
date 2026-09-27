@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "../../../../lib/prisma";
-import { requireAdminRequest } from "../../../../lib/requireAdminRequest";
-import { gatewayAuthHeaders, requireInferenceGateway } from "../../../../lib/inferenceGateway";
+import { prisma } from "@/lib/prisma";
+import { requireAdminRequest } from "@/lib/requireAdminRequest";
+import { gatewayAuthHeaders, requireInferenceGateway } from "@/lib/inferenceGateway";
 
 function normalizeModel(name: string): string {
   const trimmed = name.trim();

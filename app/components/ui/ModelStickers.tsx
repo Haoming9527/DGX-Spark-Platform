@@ -156,55 +156,9 @@ export function ModelStickers({ docked, className = "" }: ModelStickersProps) {
           ? `${4.8 + railIndex * 3.55}rem`
           : `${6.2 + railIndex * 3.55}rem`;
 
-        const animate = (() => {
-          if (docked && isMobile) {
-            return {
-              left: onLeft ? "-18%" : "118%",
-              right: "auto" as const,
-              top: idle.top,
-              x: "-50%",
-              y: "-50%",
-              rotate: onLeft ? -18 : 18,
-              scale: 0.7,
-              opacity: 0,
-            };
-          }
-          if (docked) {
-            return {
-              left: onLeft ? "0.65rem" : "auto",
-              right: onLeft ? "auto" : "0.65rem",
-              top: dockedTop,
-              x: 0,
-              y: 0,
-              rotate: onLeft ? -6 : 6,
-              scale: viewport === "laptop" ? 0.8 : 0.88,
-              opacity: 0.9,
-            };
-          }
-          return {
-            left: idle.left,
-            right: "auto" as const,
-            top: idle.top,
-            x: "-50%",
-            y: "-50%",
-            rotate: idle.rotate,
-            scale: viewport === "mobile" ? 1 : viewport === "desktop" ? 0.95 : 0.85,
-            opacity: 1,
-          };
-        })();
-
-        return (
-          <motion.div
-            key={model.id}
-            className="pointer-events-none absolute"
-            initial={false}
-            animate={animate}
-            transition={
-              reduceMotion
-                ? { duration: 0 }
-                : { type: "spring", stiffness: 120, damping: 18, mass: 0.85 }
-            }
-          >
+        const idleScale =
+          viewport === "mobile" ? 1 : viewport === "desktop" ? 0.95 : 0.85;
+        const mark = (
             <span
               className={`model-logo-sticker pointer-events-none inline-flex items-center justify-center ${
                 model.ink ? "model-logo-ink" : ""
@@ -232,6 +186,60 @@ export function ModelStickers({ docked, className = "" }: ModelStickersProps) {
                 />
               ) : null}
             </span>
+        );
+
+        if (!docked) {
+          return (
+            <div
+              key={model.id}
+              className="pointer-events-none absolute"
+              style={{
+                left: idle.left,
+                top: idle.top,
+                transform: `translate(-50%, -50%) rotate(${idle.rotate}deg) scale(${idleScale})`,
+              }}
+            >
+              {mark}
+            </div>
+          );
+        }
+
+        const animate =
+          isMobile
+            ? {
+                left: onLeft ? "-18%" : "118%",
+                right: "auto" as const,
+                top: idle.top,
+                x: "-50%",
+                y: "-50%",
+                rotate: onLeft ? -18 : 18,
+                scale: 0.7,
+                opacity: 0,
+              }
+            : {
+                left: onLeft ? "0.65rem" : "auto",
+                right: onLeft ? "auto" : "0.65rem",
+                top: dockedTop,
+                x: 0,
+                y: 0,
+                rotate: onLeft ? -6 : 6,
+                scale: viewport === "laptop" ? 0.8 : 0.88,
+                opacity: 0.9,
+              };
+
+        return (
+          <motion.div
+            key={model.id}
+            className="pointer-events-none absolute"
+            initial={false}
+            animate={animate}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { type: "spring", stiffness: 120, damping: 18, mass: 0.85 }
+            }
+          >
+            {mark}
           </motion.div>
         );
       })}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronRight, Clock, Zap, Copy, Check, RotateCcw } from "lucide-react";
 import { Message } from "../types/chat";
 import ReactMarkdown from "react-markdown";
@@ -16,6 +16,7 @@ interface MessageBubbleProps {
   message: Message;
   onRetry?: () => void;
   showActions?: boolean;
+  streaming?: boolean;
 }
 
 function isProseMistakenForCode(code: string): boolean {
@@ -26,7 +27,7 @@ function isProseMistakenForCode(code: string): boolean {
   return /[.?!)]$/.test(t) || /^(would|do|can|could|should|shall|may|let|if|what|how|why)\b/i.test(t);
 }
 
-function markdownComponents(isDark: boolean): Components {
+function markdownComponents(isDark: boolean, highlight: boolean): Components {
   return {
   pre({ children }) {
     return <>{children}</>;
@@ -54,24 +55,30 @@ function markdownComponents(isDark: boolean): Components {
           <div className="flex items-center justify-between bg-panel-hover/80 px-3.5 py-2 text-[11px] font-medium uppercase tracking-wider text-foreground/40">
             <span>{match[1]}</span>
           </div>
-          <SyntaxHighlighter
-            style={isDark ? oneDark : oneLight}
-            language={match[1]}
-            PreTag="div"
-            wrapLongLines
-            customStyle={{
-              margin: 0,
-              background: "var(--code-bg)",
-              color: isDark ? "#abb2bf" : "#383a42",
-              padding: "1rem 1.1rem",
-              fontSize: "0.8125rem",
-            }}
-            codeTagProps={{
-              style: { whiteSpace: "pre-wrap", wordBreak: "break-word" },
-            }}
-          >
-            {text}
-          </SyntaxHighlighter>
+          {highlight ? (
+            <SyntaxHighlighter
+              style={isDark ? oneDark : oneLight}
+              language={match[1]}
+              PreTag="div"
+              wrapLongLines
+              customStyle={{
+                margin: 0,
+                background: "var(--code-bg)",
+                color: isDark ? "#abb2bf" : "#383a42",
+                padding: "1rem 1.1rem",
+                fontSize: "0.8125rem",
+              }}
+              codeTagProps={{
+                style: { whiteSpace: "pre-wrap", wordBreak: "break-word" },
+              }}
+            >
+              {text}
+            </SyntaxHighlighter>
+          ) : (
+            <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words bg-[var(--code-bg)] p-4 font-mono text-[0.8125rem] leading-relaxed text-foreground/85">
+              <code>{text}</code>
+            </pre>
+          )}
         </div>
       );
     }
@@ -117,11 +124,14 @@ function markdownComponents(isDark: boolean): Components {
   };
 }
 
-export function MessageBubble({ message, onRetry, showActions }: MessageBubbleProps) {
+export function MessageBubble({ message, onRetry, showActions, streaming = false }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const { theme } = useTheme();
   const isDark = theme === "dark";
-  const components = markdownComponents(isDark);
+  const components = useMemo(
+    () => markdownComponents(isDark, isUser || !streaming),
+    [isDark, isUser, streaming],
+  );
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -192,7 +202,7 @@ export function MessageBubble({ message, onRetry, showActions }: MessageBubblePr
                 </span>
               )}
             </summary>
-            <div className="custom-scrollbar mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap border-t border-white/10 pt-2.5 pl-1 text-[13px] leading-relaxed text-[#a8a8a8]">
+            <div className="custom-scrollbar mt-2 max-h-64 overflow-y-auto overscroll-contain whitespace-pre-wrap border-t border-white/10 pt-2.5 pl-1 text-[13px] leading-relaxed text-[#a8a8a8]">
               {message.thoughtProcess}
             </div>
           </details>

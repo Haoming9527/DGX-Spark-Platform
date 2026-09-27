@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "../../../../lib/prisma";
-import { hashPassword, generateToken } from "../../../../lib/auth";
+import { hashPassword, generateToken, applySessionCookie } from "../../../../lib/auth";
 import { loadAccount, publicUser } from "../../../../lib/account";
+import { clientKey, takeRateLimit } from "../../../../lib/rateLimit";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: NextRequest) {
   try {
+    if (!takeRateLimit(`signup:${clientKey(req)}`, { limit: 5, windowMs: 15 * 60 * 1000 })) {
+      return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
+    }
+
     const body = await req.json();
     const { username, email, password, referralCode } = body;
 
@@ -81,7 +86,6 @@ export async function POST(req: NextRequest) {
         username: cleanUsername,
         email: cleanEmail,
         passwordHash,
-        referralCode: referralCode.trim().slice(0, 100),
       },
       select: { id: true, username: true, email: true },
     });
@@ -103,14 +107,7 @@ export async function POST(req: NextRequest) {
       user: publicUser(account),
     });
 
-    response.cookies.set("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
-      path: "/",
-    });
-
+    applySessionCookie(response, token);
     return response;
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Internal server error";

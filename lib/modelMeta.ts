@@ -8,7 +8,7 @@ export type ModelFamily = {
 
 const FAMILIES: Array<{ match: RegExp; family: ModelFamily }> = [
   { match: /llama|meta|muse/i, family: { id: "llama", label: "Meta", src: "/models/llama.svg" } },
-  { match: /mistral/i, family: { id: "mistral", label: "Mistral", src: "/models/mistral.svg" } },
+  { match: /mistral|magnum|anthracite/i, family: { id: "mistral", label: "Mistral", src: "/models/mistral.svg" } },
   { match: /nemotron|nvidia/i, family: { id: "nvidia", label: "NVIDIA", src: "/models/nvidia.svg" } },
   { match: /qwen/i, family: { id: "qwen", label: "Qwen", src: "/models/qwen.svg" } },
   { match: /deepseek/i, family: { id: "deepseek", label: "DeepSeek", src: "/models/deepseek.svg" } },

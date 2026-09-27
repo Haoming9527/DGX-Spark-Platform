@@ -6,9 +6,16 @@ type LogoMarkProps = {
   className?: string;
   href?: string;
   bare?: boolean;
+  priority?: boolean;
 };
 
-export function LogoMark({ size = 28, className = "", href, bare = false }: LogoMarkProps) {
+export function LogoMark({
+  size = 28,
+  className = "",
+  href,
+  bare = false,
+  priority = false,
+}: LogoMarkProps) {
   const pad = bare ? 0 : Math.max(10, Math.round(size * 0.35));
   const inner = (
     <span
@@ -21,7 +28,7 @@ export function LogoMark({ size = 28, className = "", href, bare = false }: Logo
         width={size}
         height={size}
         className="object-contain"
-        priority
+        priority={priority}
       />
     </span>
   );

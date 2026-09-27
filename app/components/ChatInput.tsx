@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Send, StopCircle, BrainCircuit, Mic, MicOff, ImagePlus, X } from "lucide-react";
+import { Send, StopCircle, BrainCircuit, Mic, MicOff, ImagePlus, X, ChevronDown } from "lucide-react";
 import { ChatImage } from "../types/chat";
 
 const MAX_IMAGES = 4;
@@ -45,6 +45,8 @@ interface ChatInputProps {
   canSee: boolean;
   pendingImages: ChatImage[];
   setPendingImages: (val: ChatImage[] | ((prev: ChatImage[]) => ChatImage[])) => void;
+  showJumpLatest?: boolean;
+  onJumpLatest?: () => void;
 }
 
 interface CustomWindow extends Window {
@@ -65,6 +67,8 @@ export function ChatInput({
   canSee,
   pendingImages,
   setPendingImages,
+  showJumpLatest = false,
+  onJumpLatest,
 }: ChatInputProps) {
   const [isListening, setIsListening] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
@@ -285,8 +289,26 @@ export function ChatInput({
   const canSend = Boolean((input.trim() || pendingImages.length > 0) && selectedModel && !isLoading);
 
   return (
-    <footer className="pointer-events-none absolute bottom-0 left-1/2 z-20 w-full max-w-3xl -translate-x-1/2 bg-gradient-to-t from-background via-background/90 to-transparent px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-8 sm:px-4 sm:pt-12">
-      <div className="pointer-events-auto flex flex-col gap-2.5">
+    <footer className="pointer-events-none absolute bottom-0 left-1/2 z-20 w-full max-w-3xl -translate-x-1/2 bg-gradient-to-t from-background via-background/90 to-transparent px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-10 sm:px-4 sm:pt-14">
+      <div className="pointer-events-auto relative flex w-full flex-col gap-2.5">
+        <AnimatePresence>
+          {showJumpLatest && onJumpLatest ? (
+            <motion.button
+              type="button"
+              key="jump-latest"
+              onClick={onJumpLatest}
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.75 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute -top-10 left-1/2 z-10 inline-flex h-7 w-7 -translate-x-1/2 cursor-pointer items-center justify-center rounded-full border border-border bg-panel text-foreground shadow-none hover:bg-panel-hover"
+              title="Scroll to latest"
+              aria-label="Scroll to latest message"
+            >
+              <ChevronDown className="h-3.5 w-3.5 text-nvidia-green" strokeWidth={2.5} />
+            </motion.button>
+          ) : null}
+        </AnimatePresence>
         <form
           onSubmit={handleSubmit}
           onPaste={onPaste}
@@ -294,7 +316,7 @@ export function ChatInput({
           onDragLeave={onDragLeave}
           onDragOver={onDragOver}
           onDrop={onDrop}
-          className={`sticker relative flex flex-col gap-2 !rounded-[1.35rem] p-2.5 font-sans transition-[box-shadow,border-color] ${
+          className={`sticker relative flex w-full flex-col gap-2 !rounded-[1.35rem] p-2.5 font-sans transition-[box-shadow,border-color] ${
             isDragging ? "!border-[#2563eb]/55 shadow-[0_0_0_3px_rgba(37,99,235,0.18)]" : ""
           }`}
         >

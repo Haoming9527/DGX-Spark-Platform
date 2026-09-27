@@ -13,9 +13,10 @@ Built with **Next.js**, **Tailwind CSS v4**, and a thin **Go** front-door in fro
 - **Auth** — invite-gated signup, bcrypt passwords, JWT HTTP-only cookies
 - **API keys** — create / rename / revoke `dgx_sk_*` keys; usage charts
 - **OpenAI-compatible API** — `https://api.dgxspark.dev/v1`
-- **Multi-node gateway** — Olla + Go API; see [`docs/multi-node-inference.md`](docs/multi-node-inference.md)
+- **Multi-node gateway** — Olla + Go API; see [`gateway/README.md`](gateway/README.md)
 - **Sticker UI** — paper/asphalt + dot grid, selective stickers, EXIT go-back plate
 - **Gateway / AI-server status** — sleeping vs offline handling in chat
+- **Infrastructure** — admin-only live Pi power, voltage, current and energy readings; setup in [`gateway/README.md`](gateway/README.md#connect-the-frontend)
 
 ---
 
@@ -40,7 +41,7 @@ graph TD
 3. **Inference nodes** — Ollama behind tunnel/Caddy
 4. **Neon** — users, hashed API keys, usage
 
-Details: [`docs/multi-node-inference.md`](docs/multi-node-inference.md).
+Details: [`gateway/README.md`](gateway/README.md).
 
 ---
 
@@ -167,7 +168,7 @@ docker compose down
 ### Production notes
 
 - Expose only the API host port (local default `50080`, container still listens on `8080`) via Cloudflare Tunnel — see [`gateway/cloudflared.example.yml`](gateway/cloudflared.example.yml).
-- Full VM / tunnel steps: [`docs/multi-node-inference.md`](docs/multi-node-inference.md).
+- Full VM / tunnel steps: [`gateway/README.md`](gateway/README.md).
 
 ---
 

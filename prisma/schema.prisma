@@ -16,7 +16,6 @@ model User {
   username     String    @unique @db.VarChar(50)
   email        String    @unique @db.VarChar(255)
   passwordHash String    @map("password_hash") @db.VarChar(255)
-  referralCode String    @map("referral_code") @db.VarChar(100)
   role         String    @default("user") @db.VarChar(16)
   disabledAt   DateTime? @map("disabled_at") @db.Timestamptz(6)
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -61,18 +60,4 @@ model RestrictedModel {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@map("restricted_models")
-}
-
-model RestrictedAccessAudit {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  at         DateTime @default(now()) @db.Timestamptz(6)
-  userId     String?  @map("user_id") @db.Uuid
-  keyId      String?  @map("key_id") @db.Uuid
-  modelName  String   @map("model_name") @db.VarChar(256)
-  action     String   @db.VarChar(16)
-  statusCode Int      @map("status_code")
-  path       String   @db.VarChar(512)
-
-  @@index([at(sort: Desc)], map: "idx_restricted_access_audit_at")
-  @@map("restricted_access_audit")
 }
