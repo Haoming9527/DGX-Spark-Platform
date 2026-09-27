@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { ArrowLeft, Info, Loader2 } from "lucide-react";
+import { Info, Loader2 } from "lucide-react";
+import Link from "next/link";
 import { formatCompactNumber } from "../../lib/formatNumber";
 
 interface ApiKey {
@@ -30,7 +31,6 @@ interface DailyMetric {
 
 interface UsageDetailsProps {
   selectedKey: ApiKey;
-  onBackClick: () => void;
   timeRange: 7 | 14 | 30;
   setTimeRange: (days: 7 | 14 | 30) => void;
   chartData: DailyMetric[];
@@ -40,7 +40,6 @@ interface UsageDetailsProps {
 
 export function UsageDetails({
   selectedKey,
-  onBackClick,
   timeRange,
   setTimeRange,
   chartData,
@@ -146,23 +145,26 @@ export function UsageDetails({
   return (
     <div className="relative w-full min-h-[360px]">
       {loading && (
-        <div className="absolute -inset-3 bg-background/75 backdrop-blur-[4px] z-[100] flex items-center justify-center rounded-2xl">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-8 h-8 text-nvidia-green animate-spin" />
-            <span className="text-xs text-foreground/50 font-semibold">Loading telemetry data...</span>
-          </div>
+        <div className="pointer-events-none absolute right-0 top-0 z-[100] flex items-center gap-2 rounded-full bg-panel/90 px-3 py-1.5 text-xs font-semibold text-muted">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-nvidia-green" />
+          Updating
         </div>
       )}
 
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <button
-            onClick={onBackClick}
-            className="flex items-center gap-2 text-xs font-semibold text-foreground/50 hover:text-foreground hover:bg-panel-hover border border-border/80 rounded-lg px-3 py-1.5 transition-all cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back to Keys Overview</span>
-          </button>
+          <nav className="flex min-w-0 items-center gap-2 text-sm" aria-label="Usage location">
+            <Link
+              href="/apikeys/usage"
+              className="sticker-sm shrink-0 px-3 py-1.5 text-xs font-semibold text-muted hover:text-foreground"
+            >
+              All keys
+            </Link>
+            <span className="text-muted" aria-hidden>
+              /
+            </span>
+            <span className="truncate font-semibold">{selectedKey.name}</span>
+          </nav>
 
           <div className="flex bg-background border border-border/60 rounded-lg p-0.5 text-xs font-semibold shrink-0">
             {([7, 14, 30] as const).map((days) => (
@@ -190,7 +192,7 @@ export function UsageDetails({
             <div className="flex items-center gap-2 text-xs text-foreground/40 font-mono">
               <span>Prefix:</span>
               <code className="text-nvidia-green bg-background px-1.5 py-0.5 rounded border border-border/50">
-                {selectedKey.key_prefix}
+                {selectedKey.key_prefix}...
               </code>
             </div>
           </div>

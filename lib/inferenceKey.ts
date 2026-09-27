@@ -1,17 +1,10 @@
-import { NextRequest } from "next/server";
-import { getSession } from "./auth";
-import { loadAccount } from "./account";
 import { requireInferenceGateway } from "./inferenceGateway";
+import type { Account } from "./account";
 
-export async function inferenceKeyForRequest(req: NextRequest): Promise<{ base: string; apiKey: string }> {
+export function inferenceKeyForAccount(account: Account | null): { base: string; apiKey: string } {
   const { base, apiKey, adminKey } = requireInferenceGateway();
-  const session = getSession(req);
-  if (!session || !adminKey) {
-    return { base, apiKey };
+  if (account?.role === "admin" && adminKey) {
+    return { base, apiKey: adminKey };
   }
-  const account = await loadAccount(session.userId);
-  if (!account || account.disabled || account.role !== "admin") {
-    return { base, apiKey };
-  }
-  return { base, apiKey: adminKey };
+  return { base, apiKey };
 }

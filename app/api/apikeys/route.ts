@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "../../../lib/prisma";
-import { getSession } from "../../../lib/auth";
+import { requireActiveAccount } from "../../../lib/requireAccount";
 
 function hashKey(rawKey: string): string {
   return crypto.createHash("sha256").update(rawKey).digest("hex");
@@ -21,10 +21,8 @@ type KeyListRow = {
 
 export async function GET(req: NextRequest) {
   try {
-    const session = getSession(req);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const gate = await requireActiveAccount(req);
+    if (gate.error) return gate.error;
 
     const keys = await prisma.$queryRaw<KeyListRow[]>`
       SELECT
@@ -37,7 +35,7 @@ export async function GET(req: NextRequest) {
           COALESCE(COUNT(u.id), 0)::int AS total_requests
        FROM api_keys k
        LEFT JOIN api_key_usage u ON u.key_id = k.id
-       WHERE k.user_id = ${session.userId}::uuid
+       WHERE k.user_id = ${gate.account.id}::uuid
        GROUP BY k.id
        ORDER BY k.created_at DESC
     `;
@@ -52,10 +50,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = getSession(req);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const gate = await requireActiveAccount(req);
+    if (gate.error) return gate.error;
 
     const { name } = await req.json();
     if (!name || typeof name !== "string" || !name.trim()) {
@@ -70,7 +66,7 @@ export async function POST(req: NextRequest) {
     }
 
     const currentCount = await prisma.apiKey.count({
-      where: { userId: session.userId },
+      where: { userId: gate.account.id },
     });
     if (currentCount >= 20) {
       return NextResponse.json(
@@ -85,7 +81,7 @@ export async function POST(req: NextRequest) {
 
     const key = await prisma.apiKey.create({
       data: {
-        userId: session.userId,
+        userId: gate.account.id,
         keyHash,
         keyPrefix,
         name: safeName,
@@ -121,10 +117,8 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const session = getSession(req);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const gate = await requireActiveAccount(req);
+    if (gate.error) return gate.error;
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -136,7 +130,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     const deleted = await prisma.apiKey.deleteMany({
-      where: { id, userId: session.userId },
+      where: { id, userId: gate.account.id },
     });
 
     if (deleted.count === 0) {
@@ -153,10 +147,8 @@ export async function DELETE(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const session = getSession(req);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const gate = await requireActiveAccount(req);
+    if (gate.error) return gate.error;
 
     const { id, name } = await req.json();
     if (!id || !name || typeof name !== "string" || !name.trim()) {
@@ -176,7 +168,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const updated = await prisma.apiKey.updateMany({
-      where: { id, userId: session.userId },
+      where: { id, userId: gate.account.id },
       data: { name: safeName },
     });
 

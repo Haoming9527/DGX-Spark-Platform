@@ -1,19 +1,38 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChatImage, Message, ModelItem } from "../types/chat";
 import { Header } from "./Header";
-import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
-import { AuthModal } from "./AuthModal";
 import { LogOut, TriangleAlert, X, Loader2, Router } from "lucide-react";
 import Link from "next/link";
 import { LogoMark } from "./ui/LogoMark";
-import { ModelStickers } from "./ui/ModelStickers";
 import { splitAssistantText } from "../../lib/splitThinking";
+import { useChatStickScroll } from "./useChatStickScroll";
 
-export function ChatInterface() {
+const MessageBubble = dynamic(() =>
+  import("./MessageBubble").then((m) => m.MessageBubble),
+);
+
+const AuthModal = dynamic(() =>
+  import("./AuthModal").then((m) => m.AuthModal),
+);
+
+const ModelStickers = dynamic(
+  () => import("./ui/ModelStickers").then((m) => m.ModelStickers),
+  { ssr: false },
+);
+
+export type ChatUser = {
+  id: string;
+  username: string;
+  email: string;
+  role?: string;
+};
+
+export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser | null }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [useReasoning, setUseReasoning] = useState(false);
@@ -25,15 +44,21 @@ export function ChatInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [isSleeping, setIsSleeping] = useState(false);
-  const [user, setUser] = useState<{ id: string; username: string; email: string; role?: string } | null>(null);
+  const [user, setUser] = useState<ChatUser | null>(initialUser);
+  const [stickersReady, setStickersReady] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesListRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLElement>(null);
-  const stickToBottomRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const { stuckToBottom, jumpToBottom, pinToBottom } = useChatStickScroll(
+    chatScrollRef,
+    messagesListRef,
+  );
 
   const checkSession = async () => {
     try {
@@ -42,6 +67,8 @@ export function ChatInterface() {
         const data = await res.json();
         if (data.authenticated && data.user) {
           setUser(data.user);
+        } else {
+          setUser(null);
         }
       }
     } catch (err) {
@@ -50,7 +77,29 @@ export function ChatInterface() {
   };
 
   useEffect(() => {
-    checkSession();
+    if (!initialUser) return;
+    void checkSession();
+  }, [initialUser]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let idleId: number | undefined;
+    let timeoutId: number | undefined;
+    const show = () => {
+      if (!cancelled) setStickersReady(true);
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      idleId = window.requestIdleCallback(show, { timeout: 400 });
+    } else {
+      timeoutId = window.setTimeout(show, 1);
+    }
+    return () => {
+      cancelled = true;
+      if (idleId !== undefined && typeof window.cancelIdleCallback === "function") {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -157,24 +206,6 @@ export function ChatInterface() {
     if (!canSee) setPendingImages([]);
   }, [canSee]);
 
-  useEffect(() => {
-    const el = chatScrollRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      stickToBottomRef.current = distanceFromBottom < 96;
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, []);
-
-  useEffect(() => {
-    if (!stickToBottomRef.current) return;
-    const el = chatScrollRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages]);
-
   const stopGeneration = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -185,6 +216,7 @@ export function ChatInterface() {
 
   const clearChat = () => {
     stopGeneration();
+    pinToBottom();
     setMessages([]);
   };
 
@@ -208,6 +240,16 @@ export function ChatInterface() {
       const isJson = contentType.includes("application/json");
 
       if (!response.ok || isJson) {
+        if (response.status === 429) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: "Too many requests. Wait a moment and try again.", isThinking: false }
+                : msg
+            )
+          );
+          return;
+        }
         let note = "Chat request failed.";
         let code = "";
         let capability = "";
@@ -269,6 +311,7 @@ export function ChatInterface() {
       let streamedContent = "";
       let streamedThinking = "";
       let lineBuffer = "";
+      let paintRaf = 0;
 
       const updateAssistant = (partial: Partial<Message>) => {
         setMessages((prev) =>
@@ -276,7 +319,7 @@ export function ChatInterface() {
         );
       };
 
-      const applyDisplayFromBuffers = () => {
+      const flushDisplayFromBuffers = () => {
         const parsed = splitAssistantText(streamedContent);
         const rThought = [streamedThinking, parsed.thought]
           .map((part) => part.trim())
@@ -289,6 +332,14 @@ export function ChatInterface() {
           content: rContent,
           thoughtProcess: rThought,
           isThinking: rIsThinking,
+        });
+      };
+
+      const applyDisplayFromBuffers = () => {
+        if (paintRaf) return;
+        paintRaf = window.requestAnimationFrame(() => {
+          paintRaf = 0;
+          flushDisplayFromBuffers();
         });
       };
 
@@ -330,15 +381,19 @@ export function ChatInterface() {
         }
       }
 
+      if (paintRaf) {
+        window.cancelAnimationFrame(paintRaf);
+        paintRaf = 0;
+      }
       if (lineBuffer.trim()) {
         try {
           const data = JSON.parse(lineBuffer.trim());
           if (data.message?.thinking) streamedThinking += data.message.thinking;
           if (data.message?.content) streamedContent += data.message.content;
-          applyDisplayFromBuffers();
         } catch {
         }
       }
+      flushDisplayFromBuffers();
     } catch (error: unknown) {
       if (error instanceof Error && error.name !== "AbortError") {
         console.error("Chat Error:", error);
@@ -383,6 +438,7 @@ export function ChatInterface() {
 
     setInput("");
     setPendingImages([]);
+    pinToBottom();
     setMessages([...history, { id: assistantMessageId, role: "assistant", content: "" }]);
     await streamAssistant(history, assistantMessageId);
   };
@@ -400,6 +456,7 @@ export function ChatInterface() {
     if (prefix[prefix.length - 1]?.role !== "user") return;
 
     const newAssistantId = `${Date.now()}`;
+    pinToBottom();
     setMessages([
       ...prefix,
       { id: newAssistantId, role: "assistant", content: "" },
@@ -428,25 +485,22 @@ export function ChatInterface() {
       />
 
       <div className="relative min-h-0 flex-1">
-        <ModelStickers docked={messages.length > 0} />
+        {stickersReady ? <ModelStickers docked={messages.length > 0} /> : null}
 
         <main
           ref={chatScrollRef}
-          className={`relative z-[2] h-full min-h-0 px-3 py-3 sm:px-4 sm:py-6 md:px-8 ${
+          className={`chat-thread relative z-[2] h-full min-h-0 px-3 py-3 sm:px-4 sm:py-6 md:px-8 ${
             messages.length === 0 ? "overflow-hidden" : "overflow-y-auto"
           }`}
         >
         <div
+          ref={messagesListRef}
           className={`mx-auto flex max-w-3xl flex-col gap-6 sm:gap-7 ${
-            messages.length === 0 ? "h-full justify-center pb-36 sm:pb-32" : "pb-36 sm:pb-28"
+            messages.length === 0 ? "h-full justify-center pb-36 sm:pb-32" : "pb-44 sm:pb-40"
           }`}
         >
           {messages.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex h-full min-h-0 flex-col items-center justify-center text-center"
-            >
+            <div className="flex h-full min-h-0 flex-col items-center justify-center text-center">
               {isOffline ? (
                 <OfflineState onRetry={fetchModels} />
               ) : isSleeping ? (
@@ -464,7 +518,7 @@ export function ChatInterface() {
                   </p>
                 </div>
               )}
-            </motion.div>
+            </div>
           ) : (
             messages.map((message, i) => {
               const isLastAssistant =
@@ -474,6 +528,7 @@ export function ChatInterface() {
                 <MessageBubble
                   key={message.id}
                   message={message}
+                  streaming={isLoading && isLastAssistant}
                   showActions={message.role === "assistant" && !isLoading}
                   onRetry={
                     isLastAssistant && !isLoading
@@ -501,6 +556,8 @@ export function ChatInterface() {
         canSee={canSee}
         pendingImages={pendingImages}
         setPendingImages={setPendingImages}
+        showJumpLatest={messages.length > 0 && !stuckToBottom}
+        onJumpLatest={jumpToBottom}
       />
       </div>
 
@@ -509,7 +566,10 @@ export function ChatInterface() {
           <AuthModal
             isOpen={isAuthModalOpen}
             onClose={() => setIsAuthModalOpen(false)}
-            onSuccess={(u) => setUser(u)}
+            onSuccess={(u) => {
+              setUser(u);
+              void fetchModels();
+            }}
           />
         )}
       </AnimatePresence>

@@ -102,11 +102,6 @@ export function UsageView({ keys, keysLoading }: UsageViewProps) {
     return (
       <UsageDetails
         selectedKey={selectedKey}
-        onBackClick={() => {
-          setChartData([]);
-          setByModel([]);
-          router.push("/apikeys/usage");
-        }}
         timeRange={timeRange}
         setTimeRange={setTimeRange}
         chartData={chartData}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
-import { getSession } from "../../../../lib/auth";
+import { requireActiveAccount } from "../../../../lib/requireAccount";
 import { filterUsageModels, type ModelUsageRow } from "../../../../lib/usageModels";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -19,10 +19,8 @@ type UsageRow = {
 
 export async function GET(req: NextRequest) {
   try {
-    const session = getSession(req);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const gate = await requireActiveAccount(req);
+    if (gate.error) return gate.error;
 
     const { searchParams } = new URL(req.url);
     const keyId = searchParams.get("id");
@@ -45,7 +43,7 @@ export async function GET(req: NextRequest) {
     }
 
     const owned = await prisma.apiKey.findFirst({
-      where: { id: keyId, userId: session.userId },
+      where: { id: keyId, userId: gate.account.id },
       select: { id: true },
     });
 
@@ -115,7 +113,7 @@ export async function GET(req: NextRequest) {
        ORDER BY requests DESC
     `;
     const byModel = await filterUsageModels(
-      session.userId,
+      gate.account.id,
       byModelRaw.map((row) => ({
         model: row.model || "Unknown",
         requests: row.requests,

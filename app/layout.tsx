@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Barlow_Condensed, Geist_Mono, Outfit } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./components/ui/ThemeToggle";
@@ -7,18 +7,21 @@ import { ThemeScript } from "./components/ui/ThemeScript";
 const outfit = Outfit({
   variable: "--font-outfit",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
 const barlow = Barlow_Condensed({
   variable: "--font-barlow",
   subsets: ["latin"],
-  weight: ["600", "700"],
+  weight: "700",
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -27,6 +30,14 @@ export const metadata: Metadata = {
   icons: {
     icon: "/logo.svg",
   },
+};
+
+export const viewport: Viewport = {
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f3f3f1" },
+    { media: "(prefers-color-scheme: dark)", color: "#0c0d0f" },
+  ],
 };
 
 export default function RootLayout({

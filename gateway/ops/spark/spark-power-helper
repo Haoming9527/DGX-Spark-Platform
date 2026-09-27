@@ -1,0 +1,36 @@
+#!/bin/sh
+# Invoked through two explicit sudoers entries, never with arbitrary arguments.
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+export LC_ALL=C
+umask 077
+exec </dev/null
+
+[ "$(id -u)" -eq 0 ] || { printf '%s\n' 'Root is required.' >&2; exit 77; }
+[ "$#" -eq 1 ] || exit 64
+case "$1" in status|shutdown) ;; *) exit 64 ;; esac
+
+boot_id=$(cat /proc/sys/kernel/random/boot_id)
+printf '%s\n' "$boot_id" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || exit 70
+state=$(/usr/bin/systemctl is-system-running 2>/dev/null) || :
+case "$state" in
+    initializing|starting|running|degraded|maintenance|stopping|offline|unknown) ;;
+    *) state=unknown ;;
+esac
+
+if [ "$1" = status ]; then
+    printf '{"boot_id":"%s","state":"%s"}\n' "$boot_id" "$state"
+    exit 0
+fi
+
+case "$state" in
+    running|degraded) ;;
+    *) printf 'Shutdown refused while system state is %s.\n' "$state" >&2; exit 75 ;;
+esac
+
+# Explicitly respect inhibitors even for this non-interactive root invocation.
+# Exit 0 acknowledges queuing normal shutdown, not completion of shutdown.
+# If acknowledgement is lost, the Pi must leave the plug powered.
+/usr/bin/systemctl --check-inhibitors=yes --no-ask-password poweroff
+printf '{"accepted":true,"boot_id":"%s"}\n' "$boot_id"

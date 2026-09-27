@@ -33,7 +33,19 @@ services:
       SYSTEM_PROMPT_FILE: /config/system-prompt.md
       SG_API_ENDPOINT: ${SG_API_ENDPOINT}
       SG_API_KEY: ${SG_API_KEY}
+      INFRA_READ_KEY: ${INFRA_READ_KEY:-}
+      MQTT_BROKER_URL: ${MQTT_BROKER_URL:-tcp://192.168.1.119:1883}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-dgx-gateway-pi-power}
+      TASMOTA_TOPIC: ${TASMOTA_TOPIC:-pi_power}
+      INFRA_CONTROL_KEY: ${INFRA_CONTROL_KEY:-}
+      DGX_SPARK_TASMOTA_TOPIC: ${DGX_SPARK_TASMOTA_TOPIC:-dgx_spark_sg_power}
+      DGX_SPARK_SSH_ADDR: ${DGX_SPARK_SSH_ADDR:-}
+      DGX_SPARK_SSH_USER: ${DGX_SPARK_SSH_USER:-spark-power}
+      DGX_SPARK_SSH_KEY_FILE: ${DGX_SPARK_SSH_KEY_FILE:-/run/secrets/spark_power_ssh_key}
+      DGX_SPARK_SSH_KNOWN_HOSTS_FILE: ${DGX_SPARK_SSH_KNOWN_HOSTS_FILE:-/run/secrets/spark_known_hosts}
+      DGX_SPARK_OFF_MAX_WATTS: ${DGX_SPARK_OFF_MAX_WATTS:-}
     volumes:
       - ./system-prompt.md:/config/system-prompt.md:ro
-    depends_on:
-      - olla
+      - ./secrets:/run/secrets:ro

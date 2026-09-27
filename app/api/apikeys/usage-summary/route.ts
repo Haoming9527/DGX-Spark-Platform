@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
-import { getSession } from "../../../../lib/auth";
+import { requireActiveAccount } from "../../../../lib/requireAccount";
 import { filterUsageModels, type ModelUsageRow } from "../../../../lib/usageModels";
 
 const TIMEFRAME_MINUTES = {
@@ -20,10 +20,8 @@ type UsageSummaryRow = {
 
 export async function GET(req: NextRequest) {
   try {
-    const session = getSession(req);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const gate = await requireActiveAccount(req);
+    if (gate.error) return gate.error;
 
     const { searchParams } = new URL(req.url);
     const timeframeParam = searchParams.get("timeframe") || "7d";
@@ -47,7 +45,7 @@ export async function GET(req: NextRequest) {
        LEFT JOIN api_key_usage u
           ON u.key_id = k.id
          AND u.timestamp >= NOW() - make_interval(mins => ${minutes})
-       WHERE k.user_id = ${session.userId}::uuid
+       WHERE k.user_id = ${gate.account.id}::uuid
        GROUP BY k.id
     `;
 
@@ -60,12 +58,12 @@ export async function GET(req: NextRequest) {
        JOIN api_key_usage u
           ON u.key_id = k.id
          AND u.timestamp >= NOW() - make_interval(mins => ${minutes})
-       WHERE k.user_id = ${session.userId}::uuid
+       WHERE k.user_id = ${gate.account.id}::uuid
        GROUP BY u.model
        ORDER BY requests DESC
     `;
     const byModel = await filterUsageModels(
-      session.userId,
+      gate.account.id,
       byModelRaw.map((row) => ({
         model: row.model || "Unknown",
         requests: row.requests,

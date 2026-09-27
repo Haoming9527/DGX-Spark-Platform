@@ -199,8 +199,8 @@ export function KeysView({
                     )}
                   </div>
                   <div className="min-w-0">
-                    <code className="max-w-full text-xs font-mono text-foreground/50 bg-background border border-border/50 rounded px-2 py-0.5 truncate lg:max-w-[180px] inline-block">
-                      {key.key_prefix}
+                    <code className="text-xs font-mono text-foreground/50 bg-background border border-border/50 rounded px-2 py-0.5 whitespace-nowrap">
+                      {key.key_prefix}...
                     </code>
                   </div>
                   <div className="text-sm text-foreground/60 tabular-nums flex justify-between lg:block">

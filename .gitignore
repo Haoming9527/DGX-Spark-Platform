@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -48,3 +49,8 @@ next-env.d.ts
 PRODUCT.md
 
 /designDraft
+
+# Gateway SSH private key and pinned host identity (local deployment only).
+/gateway/secrets/
+
+.impeccable

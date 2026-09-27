@@ -479,6 +479,12 @@ html[data-theme="dark"] .model-logo-kimi {
   animation: logo-spin 0.85s linear infinite;
 }
 
+.chat-thread {
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--foreground) 22%, transparent) transparent;

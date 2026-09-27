@@ -3,13 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { AdminShell } from "../AdminShell";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 type ModelRow = { name: string; restricted: boolean };
 
 export default function AdminModelsPage() {
   const [models, setModels] = useState<ModelRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<ModelRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -30,19 +33,26 @@ export default function AdminModelsPage() {
     load();
   }, [load]);
 
-  const toggle = async (name: string, restricted: boolean) => {
+  const applyPending = async () => {
+    if (!pending || busy) return;
+    setBusy(true);
     setError(null);
-    const res = await fetch("/api/admin/models", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ modelName: name, restricted }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Update failed.");
-      return;
+    const restricted = !pending.restricted;
+    try {
+      const res = await fetch("/api/admin/models", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelName: pending.name, restricted }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Update failed.");
+      setModels((prev) => prev.map((m) => (m.name === pending.name ? { ...m, restricted } : m)));
+      setPending(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Update failed.");
+    } finally {
+      setBusy(false);
     }
-    setModels((prev) => prev.map((m) => (m.name === name ? { ...m, restricted } : m)));
   };
 
   return (
@@ -51,6 +61,22 @@ export default function AdminModelsPage() {
       hint="Restricted models are hidden from the public list and cannot be called without admin."
       active="models"
     >
+      <ConfirmDialog
+        open={Boolean(pending)}
+        title={pending?.restricted ? "Make public" : "Restrict model"}
+        body={
+          pending?.restricted
+            ? `Make ${pending.name} public? It will show in the model list.`
+            : `Restrict ${pending?.name}? It will be hidden from the public list and cannot be called without admin.`
+        }
+        confirmLabel={pending?.restricted ? "Make public" : "Restrict"}
+        danger={!pending?.restricted}
+        loading={busy}
+        onConfirm={applyPending}
+        onCancel={() => {
+          if (!busy) setPending(null);
+        }}
+      />
       <div className="sticker space-y-4 p-4 sm:p-5">
         {error && <p className="text-sm text-red-400">{error}</p>}
         {loading ? (
@@ -64,7 +90,7 @@ export default function AdminModelsPage() {
                 <code className="truncate font-mono text-sm">{model.name}</code>
                 <button
                   type="button"
-                  onClick={() => toggle(model.name, !model.restricted)}
+                  onClick={() => setPending(model)}
                   className={`sticker-sm h-8 px-3 text-xs font-semibold ${
                     model.restricted ? "text-red-400" : "text-nvidia-green"
                   }`}
