@@ -33,8 +33,9 @@ Use your existing trusted SSH connection, `ssh haoming@spark-2c12.local`. The se
 below uses that account only for installation. The running gateway receives a
 separate restricted key; it never receives your login password or personal key.
 No agent, Python package, or new SSH server is required on the Spark. Its existing
-Linux tools must include `sudo`, OpenSSH utilities, and systemd 248 or newer; the
-installer checks the required command support and stops if it is missing.
+Linux tools must include `sudo`, OpenSSH utilities, and `busctl` with a running
+systemd-logind that supports `PowerOffWithFlags`. The installer checks support
+without requesting shutdown and stops if it is missing.
 
 ## 2. Generate a dedicated key on the Pi
 
@@ -75,8 +76,9 @@ The installer creates the password-locked `spark-power` system account and:
   and root helper both require exactly one valid boot UUID for shutdown; the
   helper compares it with the current boot before acting. `status` returns
   protocol version 2, `boot_id`, system state, uptime and maintenance-lock state.
-  `shutdown` checks the maintenance lock again, then requests ordinary
-  `systemctl --check-inhibitors=yes --no-ask-password poweroff`, then returns
+  `shutdown` checks the maintenance lock and blocking shutdown inhibitors, then
+  requests normal shutdown through logind `PowerOffWithFlags` with flag `1`
+  (`SD_LOGIND_ROOT_CHECK_INHIBITORS`). It returns
   `{"protocol_version":2,"accepted":true,"boot_id":"..."}` only after successful
   command exit. The sudoers argument wildcard cannot bypass the helper's validation.
 
@@ -87,9 +89,13 @@ The Spark's SSH configuration must permit public-key access for `spark-power`
 and its normal `.ssh/authorized_keys`. If you maintain an `AllowUsers` list, add
 `spark-power` alongside its existing entries; do not loosen global authentication.
 
-The explicit inhibitor option is intentional for a non-interactive call.
-Systemd describes the behaviour in its
-[systemctl documentation](https://github.com/systemd/systemd/blob/main/man/systemctl.xml).
+This avoids `systemctl --check-inhibitors=yes` rejecting the helper's own SSH
+session. Logged-in desktop/SSH sessions alone do not block an authorized shutdown;
+save work before confirming. Blocking shutdown inhibitors (including root-owned
+locks) are checked first, and logind checks inhibitors again and handles delay
+inhibitors. A failed check or request produces no acknowledgement. There is no
+fallback to `poweroff -i`, forced shutdown, or inhibitor bypass.
+See the [logind API documentation](https://github.com/systemd/systemd/blob/main/man/org.freedesktop.login1.xml).
 Success means the shutdown was accepted, not that disks have finished unmounting.
 
 ## 4. Pin the Spark's SSH host identity

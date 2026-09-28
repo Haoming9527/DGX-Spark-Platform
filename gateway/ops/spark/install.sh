@@ -15,11 +15,11 @@ account=spark-power
 account_home=/var/lib/spark-power
 marker=$account_home/.managed-by-dgx-gateway
 
-for executable in /usr/bin/systemctl /usr/bin/ssh-keygen /usr/bin/sudo /usr/sbin/visudo /usr/sbin/useradd /usr/sbin/usermod; do
+for executable in /usr/bin/systemctl /usr/bin/busctl /usr/bin/ssh-keygen /usr/bin/sudo /usr/sbin/visudo /usr/sbin/useradd /usr/sbin/usermod; do
     [ -x "$executable" ] || fail "Missing dependency: $executable"
 done
 [ -f /proc/sys/kernel/random/boot_id ] || fail 'A running Linux system is required.'
-/usr/bin/systemctl --help | grep -q -- '--check-inhibitors=' || fail 'systemd 248+ with --check-inhibitors is required.'
+/usr/bin/busctl --system --timeout=3 --no-pager introspect org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager | grep -Eq '^[[:space:]]*\.PowerOffWithFlags[[:space:]]+method[[:space:]]+t[[:space:]]' || fail 'systemd-logind with PowerOffWithFlags is required.'
 [ -f "$public_key" ] || fail 'Public key file not found.'
 [ "$(awk 'NF {count++} END {print count+0}' "$public_key")" -eq 1 ] || fail 'Supply exactly one Ed25519 public key.'
 key=$(awk 'NF {print $1 " " $2}' "$public_key")

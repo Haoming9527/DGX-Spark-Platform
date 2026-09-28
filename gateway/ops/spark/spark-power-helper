@@ -50,5 +50,23 @@ if [ -e /var/lib/spark-power/maintenance.lock ] || [ -L /var/lib/spark-power/mai
     printf '%s\n' 'Shutdown refused: Spark maintenance lock is active.' >&2
     exit 75
 fi
-/usr/bin/systemctl --check-inhibitors=yes --no-ask-password poweroff
+# Check all blocking shutdown inhibitors, including root-owned locks that older
+# logind versions exclude from their same-UID checks. Never infer safety when
+# the inhibitor query fails or has an unexpected response.
+blocked=$(/usr/bin/busctl --system --timeout=3 get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager BlockInhibited) || exit 75
+case "$blocked" in
+    's "'*'"') ;;
+    *) printf '%s\n' 'Shutdown refused: could not read shutdown inhibitors.' >&2; exit 75 ;;
+esac
+blocked=${blocked#s \"}
+blocked=${blocked%\"}
+case ":$blocked:" in
+    *:shutdown:*) printf '%s\n' 'Shutdown refused: active block inhibitor.' >&2; exit 75 ;;
+esac
+
+# Request normal shutdown directly from logind. Unlike systemctl's client-side
+# session check, this does not reject our own spark-power SSH session.
+# Flag 1 is SD_LOGIND_ROOT_CHECK_INHIBITORS; never use SKIP_INHIBITORS or force.
+# logind still checks blockers and handles delay inhibitors before shutdown.
+/usr/bin/busctl --system --timeout=3 --allow-interactive-authorization=no call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager PowerOffWithFlags t 1 >/dev/null
 printf '{"protocol_version":2,"accepted":true,"boot_id":"%s"}\n' "$boot_id"
