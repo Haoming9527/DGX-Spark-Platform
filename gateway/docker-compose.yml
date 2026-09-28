@@ -24,6 +24,8 @@ services:
         required: false
     ports:
       - "127.0.0.1:${API_PORT:-50080}:8080"
+    extra_hosts:
+      - "spark-2c12.local:192.168.1.105"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       CHAT_SERVICE_KEY: ${CHAT_SERVICE_KEY}
