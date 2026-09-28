@@ -13,7 +13,9 @@ function interval(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-const buttonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-panel-hover focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:opacity-50";
+const buttonBase = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:bg-panel-hover disabled:text-muted disabled:opacity-100";
+const buttonClass = `${buttonBase} bg-panel text-foreground enabled:hover:bg-panel-hover`;
+const confirmButtonClass = `${buttonBase} bg-foreground text-background enabled:hover:bg-foreground/90`;
 
 export function DgxSparkPowerPanel() {
   const { snapshot, operation, loading, error, accessError, submitting, actionError, retryRequest, submit } = useSparkPower();
@@ -29,9 +31,9 @@ export function DgxSparkPowerPanel() {
   const shutdownConfirmationBlocked = busy || Boolean(accessError) ||
     (retryShutdown ? !retryRequest : !snapshot?.can_shutdown);
   const powerOnReason = snapshot?.power_on_cooldown_seconds ?
-    `Power on available in ${interval(snapshot.power_on_cooldown_seconds)}.` : snapshot?.power_on_blocked_reason;
+    `Available in ${interval(snapshot.power_on_cooldown_seconds)}.` : snapshot?.power_on_blocked_reason;
   const shutdownReason = snapshot?.shutdown_cooldown_seconds ?
-    `Shutdown available in ${interval(snapshot.shutdown_cooldown_seconds)}.` : snapshot?.shutdown_blocked_reason;
+    `Available in ${interval(snapshot.shutdown_cooldown_seconds)}.` : snapshot?.shutdown_blocked_reason;
   const issue = accessError ? null : snapshot?.configuration_error || snapshot?.error || error;
   const relayLabel = snapshot?.relay_state === "ON" ? "On" : snapshot?.relay_state === "OFF" ? "Off" : "Unknown";
   const machineLabel = loading ? "Checking…" : snapshot?.relay_state === "OFF" ? "Powered off" :
@@ -130,8 +132,8 @@ export function DgxSparkPowerPanel() {
         <div className="mt-3 text-sm leading-6" role="status" aria-live="polite" aria-atomic="true">
           {submitting ? <p className="flex items-center gap-2"><Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />Sending request…</p> :
             operation && <p className="flex items-start gap-2">{running && <Loader2 className="mt-1 h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />}<span>{operation.message}</span></p>}
-          {running && <p className="mt-1 text-muted">You can leave this page. The Pi will finish the operation.</p>}
-          {snapshot?.admission_blocked_reason && <p className="mt-1 text-muted">AI requests paused. {snapshot.admission_blocked_reason}</p>}
+          {running && <p className="mt-1 text-muted">Continues if you leave this page.</p>}
+          {snapshot?.admission_blocked_reason && <p className="mt-1 text-muted">AI requests paused.</p>}
           {actionError && <p className="mt-2 text-muted">{actionError}</p>}
         </div>
         {retryRequest && !accessError && (
@@ -146,10 +148,10 @@ export function DgxSparkPowerPanel() {
         else section.current?.focus();
       }}>
         <h3 id={`${id}-confirm-title`} className="text-lg font-bold">Shut down DGX Spark?</h3>
-        <p id={`${id}-confirm-description`} className="mt-3 text-sm leading-6 text-muted">New AI requests will be blocked immediately when shutdown is accepted. Existing requests get up to five minutes to finish; if they are still running, shutdown is cancelled. Other jobs on the Spark may stop. The Pi will cut plug power only after the shutdown checks pass.</p>
+        <p id={`${id}-confirm-description`} className="mt-3 text-sm leading-6 text-muted">Blocks new AI requests and waits for active requests before shutting down. Other jobs may stop.</p>
         <div className="mt-6 flex flex-col-reverse gap-3 min-[420px]:flex-row min-[420px]:justify-end">
           <button ref={cancel} type="button" className={buttonClass} onClick={() => dialog.current?.close()}>Cancel</button>
-          <button type="button" className={`${buttonClass} bg-foreground text-background hover:bg-foreground/90`} disabled={shutdownConfirmationBlocked} onClick={() => {
+          <button type="button" className={confirmButtonClass} disabled={shutdownConfirmationBlocked} onClick={() => {
             dialog.current?.close();
             void submit("shutdown", retryShutdown);
           }}>Shut down &amp; power off</button>
