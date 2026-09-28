@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -518,7 +519,15 @@ func (c *Controller) powerOff(ctx context.Context, s meterConnection, op *Operat
 	}
 	c.phase(op, "shutting_down", "Requesting a normal Spark shutdown…")
 	if err := c.host.shutdown(shutdownCtx, initialBoot); err != nil {
-		c.finish(op, "failed", "Shutdown was not acknowledged. The Spark may be shutting down; plug power is left unchanged.")
+		var command *sshCommandError
+		if errors.As(err, &command) {
+			// Bounded helper stderr is diagnostic data, never an instruction or
+			// evidence authorizing cutoff. Keep it out of the browser response.
+			slog.Warn("spark_shutdown_ssh_failed", "operation_id", op.ID, "error", err.Error(), "helper_stderr", command.stderr)
+		} else {
+			slog.Warn("spark_shutdown_ssh_failed", "operation_id", op.ID, "error", err.Error())
+		}
+		c.finish(op, "failed", shutdownFailure(err)+" Plug power is left unchanged.")
 		return
 	}
 	c.phase(op, "waiting_for_off", "Shutdown accepted. Waiting for the Spark's off-state readings…")
