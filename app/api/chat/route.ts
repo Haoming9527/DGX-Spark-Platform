@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: gatewayAuthHeaders(apiKey, { "Content-Type": "application/json" }),
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(180000),
+      signal: AbortSignal.any([req.signal, AbortSignal.timeout(180000)]),
     });
 
     if (!response.ok) {

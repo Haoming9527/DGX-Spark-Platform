@@ -181,8 +181,8 @@ export function MessageBubble({ message, onRetry, showActions, streaming = false
     );
   }
 
-  const showBody =
-    Boolean(message.content) || (!message.isThinking && !message.thoughtProcess);
+  const isThinking = streaming && message.isThinking;
+  const showBody = Boolean(message.content) || (streaming && !message.thoughtProcess);
 
   return (
     <div className="group flex w-full flex-col gap-2">
@@ -192,9 +192,9 @@ export function MessageBubble({ message, onRetry, showActions, streaming = false
             <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-lg px-1 py-0.5 text-[13px] text-[#b0b0b0] transition-colors hover:text-white [&::-webkit-details-marker]:hidden">
               <ChevronRight className="h-3.5 w-3.5 transition-transform group-open/think:rotate-90" />
               <span className="font-display font-bold uppercase tracking-[0.06em]">
-                {message.isThinking ? "Thinking" : "Thoughts"}
+                {isThinking ? "Thinking" : "Thoughts"}
               </span>
-              {message.isThinking && (
+              {isThinking && (
                 <span className="ml-1.5 inline-flex items-center gap-1" aria-hidden>
                   <span className="sticker-pulse" />
                   <span className="sticker-pulse sticker-pulse-delay-1" />
@@ -222,7 +222,7 @@ export function MessageBubble({ message, onRetry, showActions, streaming = false
           </div>
         )}
 
-        {showActions && message.content && !message.isThinking && (
+        {showActions && message.content && !isThinking && (
           <div className="mt-0.5 flex items-center gap-0.5">
             <button
               type="button"
