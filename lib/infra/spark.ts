@@ -1,5 +1,23 @@
 export type SparkAction = "on" | "shutdown";
 
+// Only these deliberate, public refusals may be relayed from the control API.
+// Transport/server failures remain ambiguous and retain the original request ID.
+export const SPARK_CONTROL_FAILURES = {
+  COOLDOWN: { status: 409, message: "Wait for the power safety interval to finish." },
+  MAINTENANCE_LOCK: { status: 409, message: "Spark maintenance is in progress. Shutdown is locked." },
+  RECOVERY_REQUIRED: { status: 409, message: "The gateway is checking Spark power after an interruption. Wait for recovery to finish." },
+  OPERATION_CONFLICT: { status: 409, message: "Another power operation is active or this request ID was already used. Refresh the Spark status." },
+  SAFETY_UNAVAILABLE: { status: 503, message: "The safety checks are unavailable. Check the Spark status and setup before retrying." },
+  NOT_READY: { status: 409, message: "The Spark is not ready for this power action. Check its current status." },
+  INVALID_REQUEST: { status: 400, message: "The gateway rejected the power request." },
+} as const;
+
+export type SparkControlErrorCode = keyof typeof SPARK_CONTROL_FAILURES;
+
+export function isSparkControlErrorCode(value: unknown): value is SparkControlErrorCode {
+  return typeof value === "string" && Object.hasOwn(SPARK_CONTROL_FAILURES, value);
+}
+
 export type SparkOperation = {
   id: string;
   request_id: string;
@@ -25,6 +43,13 @@ export type SparkSnapshot = {
   operation: SparkOperation | null;
   can_power_on: boolean;
   can_shutdown: boolean;
+  power_on_blocked_reason: string | null;
+  shutdown_blocked_reason: string | null;
+  power_on_cooldown_seconds: number;
+  shutdown_cooldown_seconds: number;
+  maintenance_locked: boolean | null;
+  active_requests: number;
+  admission_blocked_reason: string | null;
   configuration_error: string | null;
   error: string | null;
 };
@@ -36,6 +61,19 @@ function object(value: unknown): Record<string, unknown> | null {
 
 function timestamp(value: unknown): string | null {
   return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
+}
+
+export function isSparkPublicMessage(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0 && value.length <= 512 &&
+    Array.from(value).every((character) => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127);
+}
+
+function nullableMessage(value: unknown): value is string | null {
+  return value === null || isSparkPublicMessage(value);
+}
+
+function count(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 export function parseSparkOperation(value: unknown): SparkOperation | null {
@@ -64,6 +102,12 @@ export function parseSparkSnapshot(value: unknown): SparkSnapshot | null {
     (data.relay_state !== "ON" && data.relay_state !== "OFF" && data.relay_state !== null) ||
     !["online", "unreachable", "unknown"].includes(String(data.machine_status)) ||
     typeof data.can_power_on !== "boolean" || typeof data.can_shutdown !== "boolean") return null;
+  // An older gateway cannot advertise the new safety checks. Fail closed instead
+  // of treating missing protection fields as a zero-second cooldown.
+  if (!nullableMessage(data.power_on_blocked_reason) || !nullableMessage(data.shutdown_blocked_reason) ||
+    !count(data.power_on_cooldown_seconds) || !count(data.shutdown_cooldown_seconds) ||
+    (data.maintenance_locked !== null && typeof data.maintenance_locked !== "boolean") ||
+    !count(data.active_requests) || !nullableMessage(data.admission_blocked_reason)) return null;
   const operation = data.operation == null ? null : parseSparkOperation(data.operation);
   if (data.operation != null && !operation) return null;
   const number = (key: string): number | null => {
@@ -84,6 +128,13 @@ export function parseSparkSnapshot(value: unknown): SparkSnapshot | null {
     operation,
     can_power_on: data.can_power_on,
     can_shutdown: data.can_shutdown,
+    power_on_blocked_reason: data.power_on_blocked_reason,
+    shutdown_blocked_reason: data.shutdown_blocked_reason,
+    power_on_cooldown_seconds: data.power_on_cooldown_seconds,
+    shutdown_cooldown_seconds: data.shutdown_cooldown_seconds,
+    maintenance_locked: data.maintenance_locked,
+    active_requests: data.active_requests,
+    admission_blocked_reason: data.admission_blocked_reason,
     configuration_error: typeof data.configuration_error === "string" ? data.configuration_error : null,
     error: typeof data.error === "string" ? data.error : null,
   };

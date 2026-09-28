@@ -25,7 +25,7 @@ services:
     ports:
       - "127.0.0.1:${API_PORT:-50080}:8080"
     extra_hosts:
-      - "spark-2c12.local:192.168.1.105"
+      - "${DGX_SPARK_HOST:-spark.invalid}:${DGX_SPARK_IP:-127.0.0.1}"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       CHAT_SERVICE_KEY: ${CHAT_SERVICE_KEY}
@@ -48,6 +48,11 @@ services:
       DGX_SPARK_SSH_KEY_FILE: ${DGX_SPARK_SSH_KEY_FILE:-/run/secrets/spark_power_ssh_key}
       DGX_SPARK_SSH_KNOWN_HOSTS_FILE: ${DGX_SPARK_SSH_KNOWN_HOSTS_FILE:-/run/secrets/spark_known_hosts}
       DGX_SPARK_OFF_MAX_WATTS: ${DGX_SPARK_OFF_MAX_WATTS:-}
+      DGX_SPARK_STATE_DIR: /var/lib/dgx-spark-power
     volumes:
       - ./system-prompt.md:/config/system-prompt.md:ro
       - ./secrets:/run/secrets:ro
+      - spark-power-state:/var/lib/dgx-spark-power
+
+volumes:
+  spark-power-state:

@@ -2,8 +2,11 @@ import "server-only";
 
 import { NextRequest, NextResponse } from "next/server";
 import {
+  isSparkControlErrorCode,
+  isSparkPublicMessage,
   parseSparkOperation,
   parseSparkSnapshot,
+  SPARK_CONTROL_FAILURES,
   type SparkAction,
 } from "./spark";
 
@@ -118,7 +121,19 @@ async function gatewayRequest(
       : "Could not reach the Spark power gateway.", 503);
   }
   if (!response.ok) {
-    void response.body?.cancel().catch(() => {});
+    if (action && [400, 409, 503].includes(response.status)) {
+      let failure: unknown;
+      try { failure = await readJSON(response.body, 2048, signal); } catch { /* Use the safe fallback below. */ }
+      if (failure && typeof failure === "object" && !Array.isArray(failure)) {
+        const data = failure as Record<string, unknown>;
+        if (isSparkControlErrorCode(data.code) && SPARK_CONTROL_FAILURES[data.code].status === response.status) {
+          const message = isSparkPublicMessage(data.error) ? data.error : SPARK_CONTROL_FAILURES[data.code].message;
+          throw new SparkGatewayError(data.code, message, response.status);
+        }
+      }
+    } else {
+      void response.body?.cancel().catch(() => {});
+    }
     if (response.status === 401 || response.status === 403) {
       throw new SparkGatewayError("CONNECTION_REJECTED", "The gateway rejected the connection. Ask an admin to check its credentials.", 503);
     }
@@ -144,7 +159,7 @@ async function gatewayRequest(
 
 export async function readSparkStatus(req: NextRequest) {
   const snapshot = parseSparkSnapshot(await gatewayRequest(req));
-  if (!snapshot) throw new SparkGatewayError("INVALID_RESPONSE", "The gateway returned an invalid Spark status.", 502);
+  if (!snapshot) throw new SparkGatewayError("INVALID_RESPONSE", "Spark controls are unavailable because the gateway returned an incomplete safety status. Check that the gateway is updated.", 502);
   return NextResponse.json(snapshot, { headers: NO_STORE });
 }
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"os"
 	"regexp"
@@ -19,8 +20,21 @@ import (
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 type hostStatus struct {
-	BootID string `json:"boot_id"`
-	State  string `json:"state"`
+	BootID            string   `json:"boot_id"`
+	State             string   `json:"state"`
+	ProtocolVersion   int      `json:"protocol_version"`
+	UptimeSeconds     *float64 `json:"uptime_seconds"`
+	MaintenanceLocked *bool    `json:"maintenance_locked"`
+}
+
+func (s hostStatus) shutdownReadinessError() error {
+	if s.ProtocolVersion != 2 || s.UptimeSeconds == nil || math.IsNaN(*s.UptimeSeconds) || math.IsInf(*s.UptimeSeconds, 0) || *s.UptimeSeconds < 0 || s.MaintenanceLocked == nil {
+		return errors.New("update the Spark power helper to protocol version 2 before shutting down")
+	}
+	if *s.MaintenanceLocked {
+		return errors.New("Spark maintenance lock is active; clear it on the Spark after maintenance finishes")
+	}
+	return nil
 }
 type sparkHost struct {
 	addr   string
@@ -87,7 +101,7 @@ func (h *sparkHost) run(parent context.Context, command string, out any) error {
 	var output boundedOutput
 	session.Stdout = &output
 	session.Stderr = io.Discard
-	// Commands are fixed strings; no request input is interpolated into a shell.
+	// Commands are fixed, except for a strictly validated boot UUID during shutdown.
 	if err := session.Run(command); err != nil {
 		return err
 	}
@@ -110,14 +124,18 @@ func (h *sparkHost) status(ctx context.Context) (hostStatus, error) {
 }
 
 func (h *sparkHost) shutdown(ctx context.Context, bootID string) error {
-	var ack struct {
-		Accepted bool   `json:"accepted"`
-		BootID   string `json:"boot_id"`
+	if !uuidPattern.MatchString(bootID) {
+		return errors.New("invalid expected Spark boot ID")
 	}
-	if err := h.run(ctx, "shutdown", &ack); err != nil {
+	var ack struct {
+		Accepted        bool   `json:"accepted"`
+		BootID          string `json:"boot_id"`
+		ProtocolVersion int    `json:"protocol_version"`
+	}
+	if err := h.run(ctx, "shutdown "+bootID, &ack); err != nil {
 		return err
 	}
-	if !ack.Accepted || ack.BootID != bootID {
+	if !ack.Accepted || ack.BootID != bootID || ack.ProtocolVersion != 2 {
 		return fmt.Errorf("shutdown was not acknowledged for the current Spark boot")
 	}
 	return nil

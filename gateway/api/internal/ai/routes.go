@@ -23,6 +23,21 @@ func (s *Server) routes() http.Handler {
 		if !ok {
 			return
 		}
+		// Protect every forwarding path, including native Ollama and vision.
+		// Hold admission across parsing, model lookup and the entire response
+		// stream so shutdown cannot race a request still preparing to forward.
+		if _, listing := liveModelListKind(r); !listing {
+			release, admitted := s.config.Admission.Enter()
+			if !admitted {
+				_, reason := s.config.Admission.Snapshot()
+				if reason == "" {
+					reason = "Spark is temporarily unavailable. Please try again."
+				}
+				writeOpenAIError(w, http.StatusServiceUnavailable, reason, "server_error", nil)
+				return
+			}
+			defer release()
+		}
 		admin := ident.role == "admin"
 		requestedModel := peekRequestModel(r)
 		gate := loadGate(r.Context(), pool, ollaURL, admin)

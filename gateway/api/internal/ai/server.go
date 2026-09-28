@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/Haoming9527/dgx-spark-platform/gateway/api/internal/admission"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -17,6 +18,7 @@ type Config struct {
 	ChatKey     string
 	AdminKey    string
 	PromptFile  string
+	Admission   *admission.Gate
 }
 
 type Server struct {
@@ -36,6 +38,9 @@ func New(ctx context.Context, config Config) (*Server, error) {
 	upstream, err := url.Parse(config.OllaURL)
 	if err != nil || upstream.Host == "" || (upstream.Scheme != "http" && upstream.Scheme != "https") {
 		return nil, fmt.Errorf("OLLA_URL must be an HTTP(S) URL")
+	}
+	if config.Admission == nil {
+		config.Admission = admission.New()
 	}
 	s := &Server{config: config, ollaURL: upstream}
 	if config.DatabaseURL != "" {

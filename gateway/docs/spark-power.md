@@ -12,8 +12,13 @@ account's current role and disabled status on every request.
 
 ## 1. Prepare the network and Spark
 
-Reserve the Spark's LAN IP in your router. Use that IP in the gateway SSH address:
-Docker does not automatically resolve the Spark's `.local` hostname. The plug
+Reserve the Spark's LAN IP in your router. Set `DGX_SPARK_HOST` and `DGX_SPARK_IP`
+in `gateway/.env`; Compose uses them for the API container's `extra_hosts` mapping.
+Set `DGX_SPARK_SSH_ADDR=${DGX_SPARK_HOST}:22` to reuse the hostname for SSH.
+Neither the hostname nor LAN IP is hardcoded in YAML. Missing mapping values use
+an unused placeholder on container loopback; configure both for Spark access.
+Keep the IP aligned with the reservation; Docker does not automatically
+use the Pi's Avahi resolver. The gateway SSH address includes `:22`. The plug
 must supply only the Spark. Keep its MQTT host/user/password pointing at your
 existing Pi broker, with port `1883` and topic `dgx_spark_sg_power`.
 
@@ -63,13 +68,17 @@ The installer creates the password-locked `spark-power` system account and:
 
 - Makes `/var/lib/spark-power` and its `.ssh/authorized_keys` root-owned. The account
   cannot replace its key restrictions or add a shell startup file.
-- Installs a forced-command wrapper with OpenSSH's `restrict` option. Only the
-  exact commands `status` and `shutdown` are accepted; shell, PTY, user RC, agent,
+- Installs a forced-command wrapper with OpenSSH's `restrict` option. Only
+  `status` and `shutdown <expected-boot-UUID>` are accepted; shell, PTY, user RC, agent,
   X11 and port forwarding are unavailable through this key.
-- Installs a root-owned helper and two exact sudoers commands. `status` returns
-  JSON containing `boot_id` and system state. `shutdown` requests ordinary
+- Installs a root-owned helper and narrowly scoped sudoers entries. The wrapper
+  and root helper both require exactly one valid boot UUID for shutdown; the
+  helper compares it with the current boot before acting. `status` returns
+  protocol version 2, `boot_id`, system state, uptime and maintenance-lock state.
+  `shutdown` checks the maintenance lock again, then requests ordinary
   `systemctl --check-inhibitors=yes --no-ask-password poweroff`, then returns
-  `{"accepted":true,"boot_id":"..."}` only after successful command exit.
+  `{"protocol_version":2,"accepted":true,"boot_id":"..."}` only after successful
+  command exit. The sudoers argument wildcard cannot bypass the helper's validation.
 
 Installation never shuts down the Spark and does not alter your existing SSH
 daemon configuration or personal account. Re-running with a new public key
@@ -85,10 +94,10 @@ Success means the shutdown was accepted, not that disks have finished unmounting
 
 ## 4. Pin the Spark's SSH host identity
 
-On the Pi, set a shell variable to the **reserved Spark IP**, not the plug's IP:
+On the Pi, use the same hostname as the gateway SSH address:
 
 ```sh
-SPARK_IP=192.168.1.REPLACE
+SPARK_HOST=spark-2c12.local
 ```
 
 Obtain the expected fingerprint through your already trusted Spark connection
@@ -98,10 +107,10 @@ or directly at the Spark console:
 ssh haoming@spark-2c12.local 'ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub'
 ```
 
-Collect the candidate key from the reserved IP:
+Collect the candidate key (the Pi must resolve this hostname too):
 
 ```sh
-ssh-keyscan -t ed25519 "$SPARK_IP" > secrets/spark_known_hosts.candidate
+ssh-keyscan -T 5 -t ed25519 "$SPARK_HOST" > secrets/spark_known_hosts.candidate
 ssh-keygen -lf secrets/spark_known_hosts.candidate
 ```
 
@@ -113,11 +122,12 @@ read-only status request:
 mv secrets/spark_known_hosts.candidate secrets/spark_known_hosts
 ssh -F /dev/null -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
   -o UserKnownHostsFile="$PWD/secrets/spark_known_hosts" \
-  -i secrets/spark_power_ssh_key "spark-power@$SPARK_IP" status
+  -i secrets/spark_power_ssh_key "spark-power@$SPARK_HOST" status
 ```
 
-Expected response: `{"boot_id":"<UUID>","state":"running"}` (or `degraded` if a
-system service has failed). This command does not change power. Do not disable
+Expected response:
+`{"protocol_version":2,"boot_id":"<UUID>","state":"running","uptime_seconds":123.45,"maintenance_locked":false}`
+(or `degraded` if a system service has failed). This command does not change power. Do not disable
 host verification if it fails; correct the address or verify a legitimately
 replaced host key through the trusted connection.
 
@@ -146,11 +156,14 @@ Add to the existing `gateway/.env` (replace the address and control secret):
 ```dotenv
 INFRA_CONTROL_KEY=<new-control-secret>
 DGX_SPARK_TASMOTA_TOPIC=dgx_spark_sg_power
-DGX_SPARK_SSH_ADDR=<reserved-Spark-IP>:22
+DGX_SPARK_HOST=spark-2c12.local
+DGX_SPARK_IP=192.168.1.105
+DGX_SPARK_SSH_ADDR=${DGX_SPARK_HOST}:22
 DGX_SPARK_SSH_USER=spark-power
 DGX_SPARK_SSH_KEY_FILE=/run/secrets/spark_power_ssh_key
 DGX_SPARK_SSH_KNOWN_HOSTS_FILE=/run/secrets/spark_known_hosts
 DGX_SPARK_OFF_MAX_WATTS=
+DGX_SPARK_STATE_DIR=/var/lib/dgx-spark-power
 ```
 
 Keep the existing MQTT settings and `TASMOTA_TOPIC=pi_power`. The Spark controller
@@ -158,6 +171,17 @@ derives its own MQTT client ID so it does not disconnect Pi readings. Its broker
 ACL needs subscription to `stat/dgx_spark_sg_power/#` and publication to the Spark's
 `cmnd/dgx_spark_sg_power/Status` and `cmnd/dgx_spark_sg_power/POWER` topics. No generic
 MQTT command or Pi relay control endpoint is exposed.
+
+Compose mounts the named `spark-power-state` volume at `/var/lib/dgx-spark-power`.
+The image prepares this directory for its non-root UID `65532`; a new volume
+inherits that ownership. The container path is fixed in Compose. For native Go
+execution, set `DGX_SPARK_STATE_DIR` to a persistent directory writable only by
+the gateway user. Do not use a temporary directory or run multiple controllers
+for one plug. A lock prevents two processes sharing this directory, not two
+controllers with unrelated directories.
+Physical power control requires Linux for the filesystem locking and durability
+checks used by the Pi deployment. Windows can be used for development and readings;
+do not configure it as a second controller for the real plug.
 
 Keep `DGX_SPARK_OFF_MAX_WATTS` empty until calibration. Shutdown remains blocked,
 while configured readings and power-on remain available. Missing Spark settings
@@ -212,7 +236,8 @@ are required. Use the live card for the attended calibration below.
    `docker compose up -d api` to load the changed environment. Power the Spark back
    on using its physical button for this initial calibration.
 
-The first **Shut down & power off** operation should be attended. The gateway
+The first **Shut down & power off** operation should be attended. After the
+request-draining step described below, the gateway
 requires an acknowledged shutdown, SSH unavailability, and fresh wattage samples
 below the threshold for 60 continuous seconds. It samples every two seconds and
 abandons cutoff after ten minutes. High wattage resets the observation window;
@@ -226,18 +251,127 @@ administration path to investigate it; the UI will not infer that it is shut dow
 This meter check is a practical safeguard, not absolute proof of a completed OS
 shutdown. A low reading or failed network connection alone never authorizes cutoff.
 
-## Operation and acceptance checks
+## 7. Cooldowns and protecting AI work
 
-Power-on confirms the relay before waiting for SSH. After five minutes without
-SSH it reports that AC is on but the Spark is unavailable; it never power-cycles.
+After confirming the plug is off, the gateway requires **three minutes of
+observed off time** before another power-on. After authenticated readiness for a
+Spark boot, it requires **five minutes of observed ready time** before allowing
+shutdown. These are precautionary platform policies, not NVIDIA-certified timing
+requirements or a guarantee of hardware lifespan. There is no administrator bypass.
+
+Accepting a shutdown request immediately closes admission to **new inference
+requests**, which receive an OpenAI-style `503`. Already admitted requests,
+including streaming responses, may finish for up to five minutes. If any remain,
+the shutdown operation is cancelled and admission reopens; no OS shutdown or
+relay command is sent. The shutdown-verification timeout starts only when the OS
+shutdown request is sent, separately from this five-minute drain period.
+
+Admission stays closed during acknowledged shutdown, power-off and startup.
+It reopens after authenticated readiness. If the gateway restarts during shutdown,
+admission only reopens after five continuous minutes of authenticated readiness
+for one boot. Readings, authentication, model permissions, model listing and health
+endpoints remain available while inference is blocked.
+
+Power-on confirms the relay before waiting for authenticated SSH readiness. After
+five minutes without readiness it reports that AC is on but the Spark is unavailable;
+it never power-cycles. An already-powered but unreachable machine is not evidence
+of completed shutdown and does not authorize an off/on cycle.
 Shutdown keeps running in the Pi gateway if you close the browser. Repeat clicks
-reuse the active operation. During an operation the card shows its latest sampled
-readings; otherwise opening/polling the card requests fresh readings.
+with the same request ID return the recorded operation, including after a restart
+within the 24-hour deduplication window. During an operation the card shows its
+latest sampled readings. Safety monitoring continues independently of the browser.
+
+## 8. Maintenance and work outside the gateway
+
+Gateway draining only covers inference that passes through this gateway. It cannot
+discover unrelated training scripts, direct Ollama clients or detached background
+jobs from its request counter. Low GPU use also does not prove work has finished.
+
+Before firmware updates or critical maintenance, create this marker **on the Spark**:
+
+```sh
+sudo touch /var/lib/spark-power/maintenance.lock
+sudo chown root:root /var/lib/spark-power/maintenance.lock
+sudo chmod 644 /var/lib/spark-power/maintenance.lock
+```
+
+The parent directory is root-owned, so the restricted SSH account cannot remove
+the marker. Status reports the lock, and the root helper checks it again immediately
+before requesting shutdown. Admins and operators cannot bypass it through the web
+UI. Set it **before starting the work**, not after shutdown has already been requested.
+After completing maintenance, remove only the marker:
+
+```sh
+sudo rm -- /var/lib/spark-power/maintenance.lock
+```
+
+For a foreground critical job, a systemd shutdown inhibitor can protect its lifetime:
+
+```sh
+systemd-inhibit --what=shutdown --mode=block --who=spark-maintenance \
+  --why='Critical Spark job is running' bash
+# Run the job in this shell; exit only when it and its child jobs have finished.
+```
+
+If acquiring an inhibitor is denied, use the root-owned maintenance marker instead.
+The helper respects inhibitors and never forces shutdown. These protections cannot
+stop someone directly switching the plug off or physically disconnecting its supply.
+Keep independent plug timers/rules disabled and restrict direct MQTT/plug access.
+
+## 9. Persistent safety state and upgrades
+
+The named volume stores `safety.json`, a small versioned JSON safety journal,
+and the process-lock file `controller.lock`, not telemetry history.
+It records command intentions before mutations, operation results and request IDs.
+State updates are atomic and synchronized to disk. Disk errors block controls and
+pause new inference while readings remain available. There is no Neon dependency
+for this coordination.
+
+After restart, unfinished operations become interrupted and are never resumed or
+replayed. Fresh relay and SSH observations restart the full relevant cooldown;
+saved wall-clock timestamps cannot shorten it. Unknown relay-command delivery is
+reconciled with read-only queries. Corrupt state blocks control rather than silently
+starting over. Do not run `docker compose down -v`, which removes the safety volume.
+
+Every configured gateway startup pauses new inference until fresh Spark readiness
+is confirmed. With a new or missing journal, including the first deployment of this
+update, allow five continuous minutes of confirmed readiness before AI requests
+and shutdown controls become available. A clean restart with previously open
+admission can reopen AI after the first fresh ready check; shutdown still observes
+its full five-minute interval.
+
+For a state-directory error, inspect `docker compose logs --tail=100 api` and the
+volume mount/ownership; the directory must belong to UID `65532` and be writable.
+For corrupt state, stop `api`, preserve the complete volume for diagnosis, and have
+an administrator inspect/repair it before restarting. If the administrator elects
+to replace unrecoverable state, first confirm the machine/relay condition in person;
+the replacement must remain subject to the full fresh observation intervals.
+Never edit state to shorten a cooldown or restore a pending cutoff operation.
+
+Upgrade an existing installation during an attended maintenance window:
+
+1. Complete active work and update this checkout on the Pi.
+2. Repeat **section 3** with the existing public key. This upgrades the wrapper,
+   helper and sudoers entry together; it never shuts down the machine and preserves
+   an existing maintenance marker. No new SSH key or host fingerprint is needed.
+3. Make the read-only status request in **section 4** using `sudo ssh` after key
+   ownership was changed. Confirm protocol version `2` and the new fields.
+4. Rebuild with `docker compose up -d --build api`. Compose creates/mounts the
+   persistent state volume. The old helper remains readable for power-on readiness,
+   but shutdown is blocked until the protocol-2 helper is installed.
+5. Deploy the frontend, wait for readiness/cooldowns, and run an attended acceptance
+   cycle only after confirming the calibrated threshold and Auto Boot setting.
+
+## 10. Acceptance checks
 
 Check admin/operator access and confirm ordinary or disabled accounts cannot use
 the routes. Verify operators cannot access Pi readings or user/model management.
 On an attended maintenance run, verify shutdown completion before relay cutoff,
-and confirm that restoring AC boots the Spark. Review `docker compose logs api`
+the full three-minute off interval, successful Auto Boot and the five-minute
+running restriction. Check that new AI requests are rejected as soon as shutdown
+is accepted, and a request-drain timeout leaves the Spark on. A maintenance marker
+or active shutdown inhibitor must prevent the OS shutdown request from succeeding.
+Review `docker compose logs api`
 for the requesting account, operation and result. Hardware loss cases must leave
 the relay supplied; a lost OFF confirmation is reported as an unknown power state
 and followed by read-only queries, never a blind command replay.
@@ -245,4 +379,6 @@ and followed by read-only queries, never a blind command replay.
 The setup scripts can be inspected and shell syntax-checked without powering off
 anything. Only the installer is run with sudo during setup; do not invoke the
 `shutdown` helper directly as a setup check. Keep SSH keys and MQTT/control secrets
-out of logs, screenshots, commits and support messages.
+out of logs, screenshots, commits and support messages. Simulate crash, disk failure,
+stale telemetry and lost acknowledgements with fake dependencies; do not induce
+them by repeatedly cutting the real Spark's power.

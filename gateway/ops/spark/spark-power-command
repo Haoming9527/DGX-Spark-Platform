@@ -3,10 +3,16 @@
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
+export LC_ALL=C
 exec </dev/null
 
 case "${SSH_ORIGINAL_COMMAND:-}" in
     status) exec /usr/bin/sudo -n /usr/local/sbin/spark-power-helper status ;;
-    shutdown) exec /usr/bin/sudo -n /usr/local/sbin/spark-power-helper shutdown ;;
-    *) printf '%s\n' 'Only status and shutdown are permitted.' >&2; exit 64 ;;
+    'shutdown '*)
+        boot_id=${SSH_ORIGINAL_COMMAND#shutdown }
+        [ "${#boot_id}" -eq 36 ] || exit 64
+        printf '%s\n' "$boot_id" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || exit 64
+        exec /usr/bin/sudo -n /usr/local/sbin/spark-power-helper shutdown "$boot_id"
+        ;;
+    *) printf '%s\n' 'Only status and shutdown with an expected boot UUID are permitted.' >&2; exit 64 ;;
 esac

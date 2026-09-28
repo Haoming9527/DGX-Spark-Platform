@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { parseSparkOperation, parseSparkSnapshot, type SparkAction, type SparkOperation, type SparkSnapshot } from "@/lib/infra/spark";
+import { isSparkControlErrorCode, isSparkPublicMessage, parseSparkOperation, parseSparkSnapshot, SPARK_CONTROL_FAILURES, type SparkAction, type SparkOperation, type SparkSnapshot } from "@/lib/infra/spark";
 
 type PendingRequest = { action: SparkAction; request_id: string };
 type AccessError = "signed-out" | "forbidden" | null;
@@ -48,6 +48,7 @@ export function useSparkPower() {
       activeRead.current = controller;
       const readGeneration = generation.current;
       let timedOut = false;
+      let failureMessage = "Could not read the Spark. Retrying…";
       const deadline = window.setTimeout(() => { timedOut = true; controller.abort(); }, 12000);
       const current = () => !stopped && readGeneration === generation.current;
       try {
@@ -60,9 +61,16 @@ export function useSparkPower() {
           setOperation(null);
           return;
         }
-        if (!response.ok) throw new Error("Could not read the Spark. Retrying…");
+        if (!response.ok) {
+          const body: unknown = await response.json();
+          if (body && typeof body === "object" && "message" in body && isSparkPublicMessage(body.message)) failureMessage = body.message;
+          throw new Error("Spark status unavailable");
+        }
         const reading = parseSparkSnapshot(await response.json());
-        if (!reading) throw new Error("Could not read the Spark. Retrying…");
+        if (!reading) {
+          failureMessage = "Spark controls are unavailable. Check that the gateway is updated and its safety status is complete.";
+          throw new Error("Invalid Spark safety status");
+        }
         if (!current() || controller.signal.aborted) return;
         setSnapshot(reading);
         setOperation(reading.operation);
@@ -75,7 +83,7 @@ export function useSparkPower() {
       } catch {
         if (current() && (!controller.signal.aborted || timedOut)) {
           setSnapshot(null);
-          setError("Could not read the Spark. Retrying…");
+          setError(failureMessage);
         }
       } finally {
         window.clearTimeout(deadline);
@@ -108,6 +116,10 @@ export function useSparkPower() {
   const submit = useCallback(async (action: SparkAction, retry = false) => {
     if (posting.current || blocked.current || !mounted.current) return;
     if (pending.current && (!retry || pending.current.action !== action)) return;
+    if (!retry && (!snapshot || operation?.status === "running" || !(action === "on" ? snapshot.can_power_on : snapshot.can_shutdown))) {
+      setActionError((action === "on" ? snapshot?.power_on_blocked_reason : snapshot?.shutdown_blocked_reason) || "Wait for the current Spark status before requesting this action.");
+      return;
+    }
     const request = retry ? pending.current : { action, request_id: requestId() };
     if (!request) return;
     posting.current = true;
@@ -140,12 +152,12 @@ export function useSparkPower() {
       const body: unknown = await response.json();
       if (!mounted.current) return;
       if (!response.ok) {
-        // Server failures may happen after acceptance. Keep the same ID for an explicit retry.
-        if (response.status >= 500) throw new Error("Request outcome unknown");
-        pending.current = null;
         const data = body !== null && typeof body === "object" ? body as { message?: unknown; error?: unknown } : {};
-        setActionError(typeof data.message === "string" ? data.message :
-          typeof data.error === "string" ? data.error : "The action could not start. Check the current status.");
+        const refused = isSparkControlErrorCode(data.error) && SPARK_CONTROL_FAILURES[data.error].status === response.status;
+        // Server failures may happen after acceptance. Keep the same ID for an explicit retry.
+        if (response.status >= 500 && !refused) throw new Error("Request outcome unknown");
+        pending.current = null;
+        setActionError(isSparkPublicMessage(data.message) ? data.message : "The action could not start. Check the current status.");
         return;
       }
       const accepted = parseSparkOperation(body);
@@ -167,7 +179,7 @@ export function useSparkPower() {
         refresh.current();
       }
     }
-  }, []);
+  }, [snapshot, operation]);
 
   return { snapshot, operation, loading, error, accessError, submitting, actionError, retryRequest, submit };
 }

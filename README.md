@@ -199,6 +199,8 @@ The Spark controller uses a dedicated MQTT topic and a restricted SSH key. Power
 
 **Shut down & power off** requests normal OS shutdown, requires a successful acknowledgement, then waits for SSH unavailability and 60 continuous seconds of fresh, advancing sensor readings at or below a calibrated off-state wattage. Failed checks cancel cutoff. An uncertain relay-command result is reported as unknown rather than blindly retried.
 
+The gateway blocks new inference as soon as shutdown is accepted and gives existing requests up to five minutes to finish; a drain timeout cancels shutdown. It enforces three minutes off before power-on and five minutes of authenticated readiness before shutdown. A persistent Pi volume preserves operation records, while restart recovery requires fresh observations and never replays power commands. A root-owned Spark maintenance lock and Linux shutdown inhibitors protect critical maintenance. These intervals are platform precautions, not hardware lifespan guarantees; direct workloads need their own lock or inhibitor.
+
 The threshold is measured on your hardware while the Spark is fully shut down and the plug remains on. It is not a universal value. This is a practical safeguard, not absolute proof of completed shutdown; perform the first complete operation with someone present.
 
 Follow the [Spark power setup guide](gateway/docs/spark-power.md) for the restricted SSH helper, host-key verification, Compose secrets, calibration, and commissioning. The feature provides live readings and operation progress; it does not store 30-day telemetry history.

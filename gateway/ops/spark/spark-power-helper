@@ -1,5 +1,5 @@
 #!/bin/sh
-# Invoked through two explicit sudoers entries, never with arbitrary arguments.
+# Invoked through restricted sudoers entries; validate every argument again here.
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
@@ -8,8 +8,15 @@ umask 077
 exec </dev/null
 
 [ "$(id -u)" -eq 0 ] || { printf '%s\n' 'Root is required.' >&2; exit 77; }
-[ "$#" -eq 1 ] || exit 64
-case "$1" in status|shutdown) ;; *) exit 64 ;; esac
+case "${1:-}" in
+    status) [ "$#" -eq 1 ] || exit 64 ;;
+    shutdown)
+        [ "$#" -eq 2 ] || exit 64
+        [ "${#2}" -eq 36 ] || exit 64
+        printf '%s\n' "$2" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || exit 64
+        ;;
+    *) exit 64 ;;
+esac
 
 boot_id=$(cat /proc/sys/kernel/random/boot_id)
 printf '%s\n' "$boot_id" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || exit 70
@@ -20,10 +27,17 @@ case "$state" in
 esac
 
 if [ "$1" = status ]; then
-    printf '{"boot_id":"%s","state":"%s"}\n' "$boot_id" "$state"
+    uptime=$(awk '{print $1}' /proc/uptime)
+    printf '%s\n' "$uptime" | grep -Eq '^[0-9]+([.][0-9]+)?$' || exit 70
+    maintenance=false
+    if [ -e /var/lib/spark-power/maintenance.lock ] || [ -L /var/lib/spark-power/maintenance.lock ]; then
+        maintenance=true
+    fi
+    printf '{"protocol_version":2,"boot_id":"%s","state":"%s","uptime_seconds":%s,"maintenance_locked":%s}\n' "$boot_id" "$state" "$uptime" "$maintenance"
     exit 0
 fi
 
+[ "$2" = "$boot_id" ] || { printf '%s\n' 'Shutdown refused: Spark rebooted since the status check.' >&2; exit 75; }
 case "$state" in
     running|degraded) ;;
     *) printf 'Shutdown refused while system state is %s.\n' "$state" >&2; exit 75 ;;
@@ -32,5 +46,9 @@ esac
 # Explicitly respect inhibitors even for this non-interactive root invocation.
 # Exit 0 acknowledges queuing normal shutdown, not completion of shutdown.
 # If acknowledgement is lost, the Pi must leave the plug powered.
+if [ -e /var/lib/spark-power/maintenance.lock ] || [ -L /var/lib/spark-power/maintenance.lock ]; then
+    printf '%s\n' 'Shutdown refused: Spark maintenance lock is active.' >&2
+    exit 75
+fi
 /usr/bin/systemctl --check-inhibitors=yes --no-ask-password poweroff
-printf '{"accepted":true,"boot_id":"%s"}\n' "$boot_id"
+printf '{"protocol_version":2,"accepted":true,"boot_id":"%s"}\n' "$boot_id"
