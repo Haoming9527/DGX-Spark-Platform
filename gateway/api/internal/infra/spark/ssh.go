@@ -39,7 +39,7 @@ func shutdownFailure(err error) string {
 	if errors.As(err, &command) {
 		message := strings.ToLower(command.stderr)
 		switch {
-		case strings.Contains(message, "operation inhibited by"):
+		case strings.Contains(message, "operation inhibited by"), strings.Contains(message, "active block inhibitor"):
 			return "Shutdown blocked by an application or maintenance task."
 		case strings.Contains(message, "is logged in"):
 			return "Shutdown blocked by a logged-in user. Log out of desktop and SSH sessions."
