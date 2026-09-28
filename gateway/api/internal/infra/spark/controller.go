@@ -71,31 +71,32 @@ type meterConnection interface {
 }
 
 type Controller struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
-	workers     sync.WaitGroup
-	config      Config
-	host        hostConnection
-	connect     func(context.Context, power.Config) (meterConnection, error)
-	now         func() time.Time
-	wait        func(context.Context, <-chan struct{}) error
-	setupError  string
-	mu          sync.Mutex
-	operation   *Operation
-	requests    map[string]*Operation
-	reading     *meterReading
-	machine     string
-	readError   string
-	slot        chan struct{}
-	admission   *admission.Gate
-	journal     safetyJournal
-	state       safetyState
-	safetyError string
-	recovering  bool
-	offSince    time.Time
-	readySince  time.Time
-	lastHostAt  time.Time
-	hostStatus  hostStatus
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	workers              sync.WaitGroup
+	config               Config
+	host                 hostConnection
+	connect              func(context.Context, power.Config) (meterConnection, error)
+	now                  func() time.Time
+	wait                 func(context.Context, <-chan struct{}) error
+	setupError           string
+	mu                   sync.Mutex
+	operation            *Operation
+	requests             map[string]*Operation
+	reading              *meterReading
+	machine              string
+	readError            string
+	slot                 chan struct{}
+	admission            *admission.Gate
+	journal              safetyJournal
+	state                safetyState
+	safetyError          string
+	recovering           bool
+	readinessResetReason string
+	offSince             time.Time
+	readySince           time.Time
+	lastHostAt           time.Time
+	hostStatus           hostStatus
 }
 
 func New(parent context.Context, cfg Config, gate *admission.Gate) *Controller {
