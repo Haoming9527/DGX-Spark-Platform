@@ -23,9 +23,22 @@ func (s *Server) routes() http.Handler {
 		if !ok {
 			return
 		}
-		// Protect every forwarding path, including native Ollama and vision.
-		// Hold admission across parsing, model lookup and the entire response
-		// stream so shutdown cannot race a request still preparing to forward.
+		// Skip inference's allowlist fetch to avoid fetching the catalog twice.
+		if kind, listing := liveModelListKind(r); listing {
+			admin := ident.role == "admin"
+			restricted, available := loadRestricted(r.Context(), pool)
+			if !available && !admin {
+				writeOpenAIError(w, http.StatusServiceUnavailable, "Model access service unavailable.", "server_error", nil)
+				return
+			}
+			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+			writeLiveModelList(rec, ollaURL, kind, restricted, admin)
+			if ident.keyID != "" && pool != nil {
+				go logUsage(context.Background(), pool, ident.keyID, rec.status, "")
+			}
+			return
+		}
+		// Hold admission through request preparation and the complete response stream.
 		if _, listing := liveModelListKind(r); !listing {
 			release, admitted := s.config.Admission.Enter()
 			if !admitted {

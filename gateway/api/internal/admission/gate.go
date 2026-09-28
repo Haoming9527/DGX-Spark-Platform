@@ -6,9 +6,7 @@ import (
 	"sync"
 )
 
-// Gate admits requests until Close is called and tracks them until release.
-// Its zero value, like New, starts open. Closing and admitting share one mutex,
-// so every request either belongs to the drain or is rejected before it starts.
+// Gate atomically admits and tracks requests. Its zero value starts open.
 type Gate struct {
 	mu      sync.Mutex
 	active  int
@@ -19,9 +17,7 @@ type Gate struct {
 
 func New() *Gate { return &Gate{} }
 
-// Enter returns a release function for an admitted request. Call it after the
-// complete response (including a streaming response) has finished. The release
-// function is idempotent and safe to call concurrently.
+// Enter returns an idempotent release function; call it after the response stream ends.
 func (g *Gate) Enter() (release func(), ok bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -58,16 +54,14 @@ func (g *Gate) Open() {
 	g.reason = ""
 }
 
-// Snapshot returns the admitted request count and the blocking reason. An empty
-// reason means admission is open.
+// Snapshot returns the active count and blocking reason (empty when open).
 func (g *Gate) Snapshot() (active int, reason string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.active, g.reason
 }
 
-// Wait waits for every admitted request to finish. Call Close first and keep
-// admission closed while using the result to authorize shutdown.
+// Wait drains active requests; keep admission closed when authorizing shutdown.
 func (g *Gate) Wait(ctx context.Context) error {
 	for {
 		if err := ctx.Err(); err != nil {

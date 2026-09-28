@@ -121,11 +121,9 @@ func New(parent context.Context, cfg Config, gate *admission.Gate) *Controller {
 			c.setupError = strings.TrimSpace(c.setupError + " " + p)
 		}
 	}
-	// Unconfigured Spark monitoring must not take down an otherwise working AI gateway.
-	// A broken SSH key must not bypass an already-persisted inference pause.
+	// Honor persisted pauses even with broken SSH; leave unconfigured AI unaffected.
 	if c.setupError == "" || (cfg.ControlKey != "" && cfg.SSHAddr != "") {
-		// No configured startup may admit inference before fresh reconciliation,
-		// even when the last saved state said the Spark was ready.
+		// Recheck readiness before admitting inference after startup.
 		gate.Close("Checking Spark readiness after gateway startup. New AI requests are paused.")
 		j, state, err := openJournal(cfg.StateDir)
 		if err != nil {
@@ -151,8 +149,7 @@ func New(parent context.Context, cfg Config, gate *admission.Gate) *Controller {
 			c.persistLocked()
 		}
 	}
-	// Read-only observation continues without a browser so cooldowns and recovery
-	// cannot depend on someone keeping a tab open. Only one session owns the plug.
+	// Recovery must progress without an open browser.
 	if c.host != nil && cfg.MeterError == "" {
 		c.workers.Add(1)
 		go func() {
@@ -239,8 +236,7 @@ func (c *Controller) Read(parent context.Context) Snapshot {
 	if c.busy() || c.ctx.Err() != nil || parent.Err() != nil {
 		return c.snapshot()
 	}
-	// Once observation begins, complete it under the controller's bounded
-	// lifetime. Closing a browser tab is not evidence of a hardware failure.
+	// Browser cancellation must not count as a hardware failure.
 	ctx, cancel := context.WithTimeout(c.ctx, 10*time.Second)
 	defer cancel()
 	select {
@@ -292,7 +288,6 @@ func (c *Controller) Read(parent context.Context) Snapshot {
 }
 
 // Start persists acceptance and closes inference admission before returning.
-// Cooldowns are checked here and again at the actual command boundary.
 func (c *Controller) Start(action, requestID, actor string) (Operation, int, string, string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -348,8 +343,7 @@ func (c *Controller) finish(op *Operation, status, message string) {
 	c.mu.Lock()
 	now := c.now().UTC()
 	op.Status, op.Phase, op.Message, op.FinishedAt = status, status, message, &now
-	// An accepted or possibly delivered OS shutdown cannot be undone by reopening
-	// inference immediately. Only read-only reconciliation may clear recovery.
+	// Uncertain shutdown delivery requires fresh recovery before reopening admission.
 	if c.state.PendingCommand != "" {
 		c.recovering = true
 		// Pre-command readiness is not recovery evidence after uncertain delivery.
@@ -459,8 +453,7 @@ func (c *Controller) powerOn(ctx context.Context, s meterConnection, op *Operati
 }
 
 func (c *Controller) powerOff(ctx context.Context, s meterConnection, op *Operation, r meterReading) {
-	// Drain never cancels an admitted request. Fresh meter and SSH checks continue
-	// so stale readiness cannot silently mature into shutdown authority.
+	// Keep checking readiness while draining; never cancel admitted requests.
 	drainCtx, cancelDrain := context.WithTimeout(ctx, drainDeadline)
 	defer cancelDrain()
 	initialBoot := ""
@@ -521,8 +514,7 @@ func (c *Controller) powerOff(ctx context.Context, s meterConnection, op *Operat
 	if err := c.host.shutdown(shutdownCtx, initialBoot); err != nil {
 		var command *sshCommandError
 		if errors.As(err, &command) {
-			// Bounded helper stderr is diagnostic data, never an instruction or
-			// evidence authorizing cutoff. Keep it out of the browser response.
+			// Keep helper stderr in logs, outside browser responses.
 			slog.Warn("spark_shutdown_ssh_failed", "operation_id", op.ID, "error", err.Error(), "helper_stderr", command.stderr)
 		} else {
 			slog.Warn("spark_shutdown_ssh_failed", "operation_id", op.ID, "error", err.Error())

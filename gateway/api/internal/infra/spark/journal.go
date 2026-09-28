@@ -12,8 +12,7 @@ import (
 	"time"
 )
 
-// This journal stores safety decisions, never queued work. Persisted commands
-// are evidence of uncertainty after a crash, not authority to execute again.
+// Persisted commands record uncertainty; never replay them after a restart.
 type savedOperation struct {
 	Operation Operation `json:"operation"`
 	Actor     string    `json:"actor"`
@@ -39,8 +38,7 @@ type fileJournal struct {
 }
 
 func openJournal(dir string) (*fileJournal, safetyState, error) {
-	// Missing history cannot establish readiness. A fresh installation observes
-	// a complete recovery interval before reopening inference admission.
+	// Missing history requires a full readiness interval.
 	state := safetyState{Version: 1, Requests: make(map[string]savedOperation), AdmissionClosed: true}
 	if !filepath.IsAbs(dir) {
 		return nil, state, errors.New("state directory must be absolute")
@@ -133,7 +131,6 @@ func decodeState(raw []byte, destination *safetyState) error {
 			return errors.New("missing operation history")
 		}
 	}
-	// Preserve the validated history in the caller, including admission and intents.
 	*destination = decoded
 	return nil
 }
