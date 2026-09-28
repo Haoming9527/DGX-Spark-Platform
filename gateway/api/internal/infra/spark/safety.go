@@ -91,7 +91,7 @@ func (c *Controller) blockedLocked(action string, worker bool) (int, string, str
 		return 503, "SAFETY_UNAVAILABLE", "Update the Spark power helper to protocol 2 before using shutdown."
 	}
 	if c.recovering {
-		return 409, "RECOVERY_REQUIRED", "Recovering from an interrupted power operation. Waiting for five continuous minutes of Spark readiness."
+		return 409, "RECOVERY_REQUIRED", c.recoveryMessageLocked()
 	}
 	if seconds := secondsRemaining(c.now(), c.readySince, minimumReady); seconds > 0 {
 		return 409, "COOLDOWN", fmt.Sprintf("Shutdown is available after %d more seconds of confirmed readiness.", seconds)
@@ -117,6 +117,9 @@ func (c *Controller) setReading(r meterReading) {
 	} else {
 		c.offSince = time.Time{}
 		if !continuous {
+			if !c.readySince.IsZero() {
+				c.readinessResetReason = "Timer restarted because plug readings were interrupted."
+			}
 			c.readySince = time.Time{}
 		}
 	}
@@ -135,6 +138,7 @@ func (c *Controller) observeHost(status hostStatus, err error) {
 	defer c.mu.Unlock()
 	now := c.now()
 	if err != nil || !ready(status) || !c.freshReadingLocked() || c.reading.RelayState != "ON" {
+		c.readinessResetReason = "Timer restarted because a Spark readiness check failed."
 		c.readySince, c.lastHostAt = time.Time{}, time.Time{}
 		c.hostStatus = hostStatus{}
 		c.machine = "unreachable"
@@ -152,6 +156,9 @@ func (c *Controller) observeHost(status hostStatus, err error) {
 		continuous = false
 	}
 	if !continuous || c.readySince.IsZero() {
+		if !c.readySince.IsZero() {
+			c.readinessResetReason = "Timer restarted because readiness checks were interrupted or the Spark restarted."
+		}
 		c.readySince = now
 	}
 	c.hostStatus, c.lastHostAt, c.machine = status, now, "online"
@@ -165,6 +172,7 @@ func (c *Controller) unavailable(message string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.reading, c.machine, c.readError = nil, "unknown", message
+	c.readinessResetReason = "Timer restarted because plug readings were interrupted."
 	c.offSince, c.readySince, c.lastHostAt = time.Time{}, time.Time{}, time.Time{}
 	if c.journal != nil {
 		c.admission.Close("Spark status is unavailable. New AI requests are paused.")
@@ -182,6 +190,7 @@ func (c *Controller) reconcileLocked() {
 		return
 	}
 	if c.recovering && secondsRemaining(c.now(), c.readySince, minimumReady) > 0 {
+		c.admission.Close(c.recoveryMessageLocked())
 		return
 	}
 	if c.state.AdmissionClosed || c.state.PendingCommand != "" {
@@ -192,7 +201,19 @@ func (c *Controller) reconcileLocked() {
 		slog.Info("spark_power_admission_reopened", "boot_id", c.hostStatus.BootID)
 	}
 	c.recovering = false
+	c.readinessResetReason = ""
 	c.admission.Open()
+}
+
+// Use the same monotonic observation timer that authorizes recovery. Polling
+// updates this text; the browser cannot advance readiness or unlock controls.
+func (c *Controller) recoveryMessageLocked() string {
+	seconds := secondsRemaining(c.now(), c.readySince, minimumReady)
+	message := fmt.Sprintf("Checking Spark stability: %d:%02d remaining of five continuous minutes.", seconds/60, seconds%60)
+	if c.readinessResetReason != "" {
+		message += " " + c.readinessResetReason
+	}
+	return message
 }
 
 // Intent must be durable before performing an irreversible external command.
