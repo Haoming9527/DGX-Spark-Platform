@@ -86,6 +86,7 @@ type Controller struct {
 	reading              *meterReading
 	machine              string
 	readError            string
+	hostReadError        string
 	slot                 chan struct{}
 	admission            *admission.Gate
 	journal              safetyJournal
@@ -206,6 +207,9 @@ func (c *Controller) snapshotLocked() Snapshot {
 	}
 	s.ConfigurationError = nullable(strings.TrimSpace(c.setupError + " " + c.config.ShutdownError + " " + c.safetyError))
 	s.Error = nullable(c.readError)
+	if s.Error == nil && !c.busyLocked() && c.reading != nil && c.reading.RelayState == "ON" {
+		s.Error = nullable(c.hostReadError)
+	}
 	_, onCode, onReason := c.blockedLocked("on", false)
 	_, shutdownCode, shutdownReason := c.blockedLocked("shutdown", false)
 	s.PowerOnBlockedReason, s.ShutdownBlockedReason = nullable(onReason), nullable(shutdownReason)

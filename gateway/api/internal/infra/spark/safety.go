@@ -68,10 +68,10 @@ func (c *Controller) blockedLocked(action string, worker bool) (int, string, str
 	}
 	if action == "on" {
 		if c.reading.RelayState != "OFF" {
-			return 409, "NOT_READY", "The Spark plug is already on; power cycling is not allowed."
+			return 409, "NOT_READY", "The Spark plug is already on"
 		}
 		if seconds := secondsRemaining(c.now(), c.offSince, minimumOff); seconds > 0 {
-			return 409, "COOLDOWN", fmt.Sprintf("Power on is available after %d more seconds of confirmed off state.", seconds)
+			return 409, "COOLDOWN", fmt.Sprintf("Power on is available after %d.", seconds)
 		}
 		return 0, "", ""
 	}
@@ -94,7 +94,7 @@ func (c *Controller) blockedLocked(action string, worker bool) (int, string, str
 		return 409, "RECOVERY_REQUIRED", c.recoveryMessageLocked()
 	}
 	if seconds := secondsRemaining(c.now(), c.readySince, minimumReady); seconds > 0 {
-		return 409, "COOLDOWN", fmt.Sprintf("Shutdown is available after %d more seconds of confirmed readiness.", seconds)
+		return 409, "COOLDOWN", fmt.Sprintf("Shutdown is available after %d.", seconds)
 	}
 	if *c.hostStatus.UptimeSeconds < minimumReady.Seconds() {
 		return 409, "COOLDOWN", "The Spark has not completed its minimum running interval."
@@ -138,6 +138,16 @@ func (c *Controller) observeHost(status hostStatus, err error) {
 	defer c.mu.Unlock()
 	now := c.now()
 	if err != nil || !ready(status) || !c.freshReadingLocked() || c.reading.RelayState != "ON" {
+		if !c.busyLocked() && c.freshReadingLocked() && c.reading.RelayState == "ON" {
+			message := "Spark SSH responded, but the operating system is not ready."
+			if err != nil {
+				message = readinessFailure(err)
+			}
+			if message != c.hostReadError {
+				slog.Warn("spark_readiness_failed", "reason", message)
+			}
+			c.hostReadError = message
+		}
 		c.readinessResetReason = "Timer restarted because a Spark readiness check failed."
 		c.readySince, c.lastHostAt = time.Time{}, time.Time{}
 		c.hostStatus = hostStatus{}
@@ -150,6 +160,10 @@ func (c *Controller) observeHost(status hostStatus, err error) {
 			}
 		}
 		return
+	}
+	if c.hostReadError != "" {
+		slog.Info("spark_readiness_restored")
+		c.hostReadError = ""
 	}
 	continuous := c.freshHostLocked() && c.hostStatus.BootID == status.BootID
 	if status.UptimeSeconds != nil && c.hostStatus.UptimeSeconds != nil && *status.UptimeSeconds < *c.hostStatus.UptimeSeconds {
@@ -209,7 +223,7 @@ func (c *Controller) reconcileLocked() {
 // updates this text; the browser cannot advance readiness or unlock controls.
 func (c *Controller) recoveryMessageLocked() string {
 	seconds := secondsRemaining(c.now(), c.readySince, minimumReady)
-	message := fmt.Sprintf("Checking Spark stability: %d:%02d remaining of five continuous minutes.", seconds/60, seconds%60)
+	message := fmt.Sprintf("Checking Spark stability: %d:%02d remaining of 5 minutes.", seconds/60, seconds%60)
 	if c.readinessResetReason != "" {
 		message += " " + c.readinessResetReason
 	}
