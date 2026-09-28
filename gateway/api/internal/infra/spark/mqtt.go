@@ -208,8 +208,7 @@ func (s *meterSession) read(ctx context.Context) (meterReading, error) {
 			}
 		}
 		r.Measurements = power.Measurements{PowerW: e.Power, VoltageV: e.Voltage, CurrentA: e.Current, EnergyTodayKWh: e.Today, EnergyYesterdayKWh: e.Yesterday, EnergyTotalKWh: e.Total}
-		// Tasmota normally reports local time without a zone. Only relative
-		// advancement is used; its clock need not match the Pi's timezone.
+		// Compare timestamp advancement, not Tasmota's timezone with the Pi's.
 		r.DeviceTime, _ = time.Parse(time.RFC3339, body.Sensors.Time)
 		if r.DeviceTime.IsZero() {
 			r.DeviceTime, _ = time.Parse("2006-01-02T15:04:05", body.Sensors.Time)

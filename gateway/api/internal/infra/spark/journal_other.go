@@ -7,8 +7,7 @@ import (
 	"os"
 )
 
-// Real power control requires the Linux filesystem locking/durability contract
-// used by the Pi deployment. Other platforms can still serve readings and AI.
+// Power control requires Linux locking and durability guarantees.
 func lockJournal(string) (*os.File, error) {
 	return nil, errors.New("power safety storage requires Linux")
 }

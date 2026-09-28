@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installed root-owned. The SSH key may invoke only these two commands.
+# Root-owned SSH command allowlist.
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH

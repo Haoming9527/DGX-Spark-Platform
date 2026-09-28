@@ -45,8 +45,7 @@ func (c *Controller) persistLocked() bool {
 	return true
 }
 
-// This is the shared policy for snapshots, HTTP acceptance and the command
-// boundary. A direct API call has no greater authority than a disabled button.
+// Apply the same policy to snapshots, API acceptance and command execution.
 func (c *Controller) blockedLocked(action string, worker bool) (int, string, string) {
 	if c.ctx.Err() != nil {
 		return 503, "SAFETY_UNAVAILABLE", "The gateway is shutting down."
@@ -219,8 +218,7 @@ func (c *Controller) reconcileLocked() {
 	c.admission.Open()
 }
 
-// Use the same monotonic observation timer that authorizes recovery. Polling
-// updates this text; the browser cannot advance readiness or unlock controls.
+// Display the controller's monotonic recovery timer.
 func (c *Controller) recoveryMessageLocked() string {
 	seconds := secondsRemaining(c.now(), c.readySince, minimumReady)
 	message := fmt.Sprintf("Checking Spark stability: %d:%02d remaining of 5 minutes.", seconds/60, seconds%60)
@@ -230,8 +228,7 @@ func (c *Controller) recoveryMessageLocked() string {
 	return message
 }
 
-// Intent must be durable before performing an irreversible external command.
-// Persisting an intent never means that command is safe to replay on recovery.
+// Persist intent before sending commands; never replay it after recovery.
 func (c *Controller) commandIntent(ctx context.Context, op *Operation, command string) bool {
 	c.mu.Lock()
 	message := ""

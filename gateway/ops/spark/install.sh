@@ -1,5 +1,4 @@
 #!/bin/sh
-# Run on the Spark with sudo. This installs files; it never requests shutdown.
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
@@ -27,7 +26,7 @@ printf '%s\n' "$key" | grep -Eq '^ssh-ed25519 [A-Za-z0-9+/]+={0,2}$' || fail 'Ge
 /usr/bin/ssh-keygen -l -f "$public_key" >/dev/null || fail 'Invalid SSH public key.'
 [ -f "$script_dir/spark-power-command" ] && [ -f "$script_dir/spark-power-helper" ] || fail 'Keep both helper files beside install.sh.'
 
-# Never repurpose an existing human/service account or grant it these privileges.
+# Only reuse accounts managed by this installer.
 if getent passwd "$account" >/dev/null; then
     [ -f "$marker" ] && [ ! -L "$marker" ] && [ "$(stat -c %u "$marker")" -eq 0 ] || fail 'Existing spark-power account is not managed by this installer.'
     [ "$(getent passwd "$account" | cut -d: -f6)" = "$account_home" ] || fail 'Existing account has an unexpected home.'
@@ -44,7 +43,7 @@ for target in "$account_home" "$account_home/.ssh" "$account_home/.ssh/authorize
     [ ! -L "$target" ] || fail "Refusing symlink: $target"
 done
 
-# Root owns every parent and key file; the login account cannot loosen restrictions.
+# Root ownership prevents the login account from changing restrictions.
 install -d -o root -g root -m 0755 "$account_home" "$account_home/.ssh"
 install -o root -g root -m 0755 "$script_dir/spark-power-command" /usr/local/sbin/spark-power-command
 install -o root -g root -m 0755 "$script_dir/spark-power-helper" /usr/local/sbin/spark-power-helper
@@ -53,8 +52,7 @@ temp_dir=$(mktemp -d)
 trap 'rm -f "$temp_dir/authorized_keys" "$temp_dir/sudoers"; rmdir "$temp_dir"' EXIT HUP INT TERM
 printf 'restrict,command="/usr/local/sbin/spark-power-command" %s\n' "$key" > "$temp_dir/authorized_keys"
 cat > "$temp_dir/sudoers" <<'SUDOERS'
-# The shutdown helper validates exactly one expected boot UUID before acting.
-# The wildcard cannot authorize other helper operations; its argument count is strict.
+# The helper restricts the wildcard to one boot UUID.
 spark-power ALL=(root) NOPASSWD: /usr/local/sbin/spark-power-helper status, /usr/local/sbin/spark-power-helper shutdown *
 SUDOERS
 /usr/sbin/visudo -cf "$temp_dir/sudoers" >/dev/null

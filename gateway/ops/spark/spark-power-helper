@@ -1,5 +1,5 @@
 #!/bin/sh
-# Invoked through restricted sudoers entries; validate every argument again here.
+# Validate arguments independently of the SSH wrapper.
 set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
@@ -43,16 +43,11 @@ case "$state" in
     *) printf 'Shutdown refused while system state is %s.\n' "$state" >&2; exit 75 ;;
 esac
 
-# Explicitly respect inhibitors even for this non-interactive root invocation.
-# Exit 0 acknowledges queuing normal shutdown, not completion of shutdown.
-# If acknowledgement is lost, the Pi must leave the plug powered.
 if [ -e /var/lib/spark-power/maintenance.lock ] || [ -L /var/lib/spark-power/maintenance.lock ]; then
     printf '%s\n' 'Shutdown refused: Spark maintenance lock is active.' >&2
     exit 75
 fi
-# Check all blocking shutdown inhibitors, including root-owned locks that older
-# logind versions exclude from their same-UID checks. Never infer safety when
-# the inhibitor query fails or has an unexpected response.
+# Include root-owned inhibitors that older logind versions may skip.
 blocked=$(/usr/bin/busctl --system --timeout=3 get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager BlockInhibited) || exit 75
 case "$blocked" in
     's "'*'"') ;;
@@ -64,9 +59,8 @@ case ":$blocked:" in
     *:shutdown:*) printf '%s\n' 'Shutdown refused: active block inhibitor.' >&2; exit 75 ;;
 esac
 
-# Request normal shutdown directly from logind. Unlike systemctl's client-side
-# session check, this does not reject our own spark-power SSH session.
-# Flag 1 is SD_LOGIND_ROOT_CHECK_INHIBITORS; never use SKIP_INHIBITORS or force.
-# logind still checks blockers and handles delay inhibitors before shutdown.
+# Direct logind calls avoid blocking on our own SSH session.
+# Flag 1 (SD_LOGIND_ROOT_CHECK_INHIBITORS) preserves inhibitor protection.
 /usr/bin/busctl --system --timeout=3 --allow-interactive-authorization=no call org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager PowerOffWithFlags t 1 >/dev/null
+# Acknowledges acceptance, not completed shutdown.
 printf '{"protocol_version":2,"accepted":true,"boot_id":"%s"}\n' "$boot_id"

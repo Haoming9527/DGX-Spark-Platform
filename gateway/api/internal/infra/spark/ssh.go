@@ -71,8 +71,7 @@ func (w *diagnosticOutput) Write(p []byte) (int, error) {
 func (e *sshStageError) Error() string { return e.stage + ": " + e.err.Error() }
 func (e *sshStageError) Unwrap() error { return e.err }
 
-// Only fixed public messages reach the API/logs; never expose remote output,
-// key contents, or arbitrary error text from the SSH server.
+// Readiness messages never expose raw SSH errors or remote output.
 func readinessFailure(err error) string {
 	var dns *net.DNSError
 	var key *knownhosts.KeyError
@@ -195,7 +194,6 @@ func (h *sparkHost) run(parent context.Context, command string, out any) error {
 	if strings.HasPrefix(command, "shutdown ") {
 		session.Stderr = &diagnostic
 	}
-	// Commands are fixed, except for a strictly validated boot UUID during shutdown.
 	if err := session.Run(command); err != nil {
 		return &sshStageError{"command", &sshCommandError{err: err, stderr: strings.TrimSpace(diagnostic.String())}}
 	}
@@ -235,8 +233,7 @@ func (h *sparkHost) shutdown(ctx context.Context, bootID string) error {
 	return nil
 }
 
-// A TCP listener counts as reachable even if SSH authentication would fail.
-// DNS/configuration failures cannot be used as evidence that a host went away.
+// Any TCP listener is reachable; DNS failures cannot establish shutdown.
 func (h *sparkHost) reachable(ctx context.Context) (bool, error) {
 	conn, err := (&net.Dialer{Timeout: time.Second}).DialContext(ctx, "tcp", h.addr)
 	if err == nil {
