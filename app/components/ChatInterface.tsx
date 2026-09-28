@@ -210,8 +210,11 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
-      setIsLoading(false);
     }
+    setIsLoading(false);
+    setMessages((prev) =>
+      prev.map((msg) => (msg.isThinking ? { ...msg, isThinking: false } : msg))
+    );
   };
 
   const clearChat = () => {
@@ -222,7 +225,9 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
 
   const streamAssistant = async (history: Message[], assistantMessageId: string) => {
     setIsLoading(true);
-    abortControllerRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    let paintRaf = 0;
 
     try {
       const response = await fetch("/api/chat", {
@@ -233,8 +238,9 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
           useReasoning: canThink && useReasoning,
           messages: toChatHistory(history, canSee),
         }),
-        signal: abortControllerRef.current.signal,
+        signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
 
       const contentType = response.headers.get("content-type") || "";
       const isJson = contentType.includes("application/json");
@@ -311,11 +317,12 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
       let streamedContent = "";
       let streamedThinking = "";
       let lineBuffer = "";
-      let paintRaf = 0;
 
       const updateAssistant = (partial: Partial<Message>) => {
         setMessages((prev) =>
-          prev.map((msg) => (msg.id === assistantMessageId ? { ...msg, ...partial } : msg))
+          controller.signal.aborted
+            ? prev
+            : prev.map((msg) => (msg.id === assistantMessageId ? { ...msg, ...partial } : msg))
         );
       };
 
@@ -343,8 +350,9 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
         });
       };
 
-      while (!done) {
+      while (!done && !controller.signal.aborted) {
         const { value, done: readerDone } = await reader.read();
+        if (controller.signal.aborted) break;
         done = readerDone;
 
         if (value) {
@@ -395,7 +403,7 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
       }
       flushDisplayFromBuffers();
     } catch (error: unknown) {
-      if (error instanceof Error && error.name !== "AbortError") {
+      if (!controller.signal.aborted && error instanceof Error && error.name !== "AbortError") {
         console.error("Chat Error:", error);
         setMessages((prev) =>
           prev.map((msg) =>
@@ -412,8 +420,16 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
         );
       }
     } finally {
-      setIsLoading(false);
-      abortControllerRef.current = null;
+      if (paintRaf) window.cancelAnimationFrame(paintRaf);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId ? { ...msg, isThinking: false } : msg
+        )
+      );
+      if (abortControllerRef.current === controller) {
+        setIsLoading(false);
+        abortControllerRef.current = null;
+      }
     }
   };
 

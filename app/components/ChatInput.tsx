@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Send, StopCircle, BrainCircuit, Mic, MicOff, ImagePlus, X, ChevronDown } from "lucide-react";
+import { useState, useEffect, useRef, useId } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Send, StopCircle, BrainCircuit, Mic, MicOff, ImagePlus, Plus, X, ChevronDown } from "lucide-react";
 import { ChatImage } from "../types/chat";
 
 const MAX_IMAGES = 4;
@@ -74,6 +74,10 @@ export function ChatInput({
   const [interimTranscript, setInterimTranscript] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [micNotice, setMicNotice] = useState<MicNotice | null>(null);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const toolsId = useId();
+  const toolsToggleRef = useRef<HTMLButtonElement>(null);
+  const reduceMotion = useReducedMotion();
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
@@ -279,7 +283,7 @@ export function ChatInput({
   };
 
   const chip =
-    "sticker-sm relative inline-flex h-8 w-8 items-center justify-center gap-1.5 text-xs font-medium text-muted transition-[filter,background-color,color,border-color] hover:brightness-110 hover:text-foreground sm:h-8 sm:w-auto sm:px-3";
+    "sticker-sm relative inline-flex h-9 w-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap text-xs font-medium text-muted !shadow-[0_2px_4px_rgb(0_0_0/0.06)] transition-[filter,background-color,color,border-color] hover:brightness-110 hover:text-foreground focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-foreground @[420px]/composer:w-auto @[420px]/composer:px-3";
   const chipImageOn =
     "!border-[#2563eb]/55 !bg-[#2563eb]/20 !text-[#1d4ed8]";
   const chipThinkOn =
@@ -287,6 +291,18 @@ export function ChatInput({
   const chipVoiceOn =
     "!border-alert/55 !bg-alert/15 !text-alert";
   const canSend = Boolean((input.trim() || pendingImages.length > 0) && selectedModel && !isLoading);
+  const toolVariants = {
+    closed: {
+      opacity: 0,
+      x: -8,
+      transition: { duration: reduceMotion ? 0 : 0.12 },
+    },
+    open: (index: number) => ({
+      opacity: 1,
+      x: 0,
+      transition: { duration: reduceMotion ? 0 : 0.24, delay: reduceMotion ? 0 : index * 0.035 },
+    }),
+  };
 
   return (
     <footer className="pointer-events-none absolute bottom-0 left-1/2 z-20 w-full max-w-3xl -translate-x-1/2 bg-gradient-to-t from-background via-background/90 to-transparent px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-10 sm:px-4 sm:pt-14">
@@ -316,7 +332,7 @@ export function ChatInput({
           onDragLeave={onDragLeave}
           onDragOver={onDragOver}
           onDrop={onDrop}
-          className={`sticker relative flex w-full flex-col gap-2 !rounded-[1.35rem] p-2.5 font-sans transition-[box-shadow,border-color] ${
+          className={`sticker @container/composer relative flex w-full flex-col gap-2 !rounded-[1.35rem] p-2.5 font-sans transition-[box-shadow,border-color] ${
             isDragging ? "!border-[#2563eb]/55 shadow-[0_0_0_3px_rgba(37,99,235,0.18)]" : ""
           }`}
         >
@@ -371,7 +387,16 @@ export function ChatInput({
           />
 
           <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
-            <div className="flex min-w-0 items-center gap-1.5">
+            <div
+              className="flex min-w-0 items-center"
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && toolsOpen) {
+                  event.preventDefault();
+                  setToolsOpen(false);
+                  toolsToggleRef.current?.focus();
+                }
+              }}
+            >
               <input
                 ref={fileInputRef}
                 type="file"
@@ -381,65 +406,116 @@ export function ChatInput({
                 onChange={(e) => void addImageFiles(e.target.files || [])}
               />
               <button
+                ref={toolsToggleRef}
                 type="button"
-                disabled={!canSee}
-                onClick={() => canSee && fileInputRef.current?.click()}
-                aria-disabled={!canSee}
-                className={`${chip} ${
-                  !canSee
-                    ? "cursor-not-allowed opacity-35 hover:brightness-100 hover:text-muted"
-                    : pendingImages.length > 0
-                      ? chipImageOn
-                      : ""
-                }`}
-                title={canSee ? "Attach images" : "This model does not accept images"}
+                onClick={() => setToolsOpen((open) => !open)}
+                aria-expanded={toolsOpen}
+                aria-controls={toolsId}
+                aria-label={`${toolsOpen ? "Hide" : "Show"} tools${isListening ? "; voice recording active" : ""}`}
+                title={toolsOpen ? "Hide tools" : "Show tools"}
+                className={`sticker-sm relative z-10 flex h-10 w-10 shrink-0 items-center justify-center transition-colors duration-200 hover:!bg-panel-hover hover:text-foreground focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-foreground ${toolsOpen ? "!bg-panel-hover text-foreground" : "text-muted"}`}
               >
-                <ImagePlus className="h-3.5 w-3.5" strokeWidth={2} />
-                <span className="hidden sm:inline">Image</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={!canThink}
-                onClick={() => canThink && setUseReasoning(!useReasoning)}
-                aria-pressed={canThink && useReasoning}
-                aria-disabled={!canThink}
-                className={`${chip} ${
-                  !canThink
-                    ? "cursor-not-allowed opacity-35 hover:brightness-100 hover:text-muted"
-                    : useReasoning
-                      ? chipThinkOn
-                      : ""
-                }`}
-                title={canThink ? "Toggle Reasoning Mode" : "This model does not support thinking"}
-              >
-                <BrainCircuit className="h-3.5 w-3.5" strokeWidth={2} />
-                <span className="hidden sm:inline">Thinking</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => void toggleListening()}
-                aria-pressed={isListening}
-                className={`${chip} ${isListening ? chipVoiceOn : ""}`}
-                title={isListening ? "Stop Recording" : "Voice Input"}
-              >
-                {isListening ? (
-                  <>
-                    <MicOff className="h-3.5 w-3.5" strokeWidth={2} />
-                    <span className="hidden sm:inline">Recording</span>
-                    <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-alert opacity-75" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-alert" />
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Mic className="h-3.5 w-3.5" strokeWidth={2} />
-                    <span className="hidden sm:inline">Voice</span>
-                  </>
+                <motion.span
+                  initial={false}
+                  animate={{ rotate: toolsOpen ? 45 : 0 }}
+                  transition={{ duration: reduceMotion ? 0 : 0.28, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex items-center justify-center"
+                >
+                  <Plus className="h-5 w-5" strokeWidth={1.8} />
+                </motion.span>
+                {!toolsOpen && (isListening || pendingImages.length > 0 || (canThink && useReasoning)) && (
+                  <span
+                    aria-hidden="true"
+                    className={`absolute right-0 top-0 h-2 w-2 rounded-full ring-2 ring-panel ${isListening ? "bg-alert" : "bg-nvidia-green"}`}
+                  />
                 )}
               </button>
+
+              <motion.div
+                id={toolsId}
+                initial={false}
+                animate={{ width: toolsOpen ? "auto" : 0 }}
+                transition={{ duration: reduceMotion ? 0 : toolsOpen ? 0.32 : 0.2, ease: [0.22, 1, 0.36, 1] }}
+                aria-hidden={!toolsOpen}
+                inert={!toolsOpen}
+                className="shrink-0 overflow-hidden"
+              >
+                <motion.div
+                  initial={false}
+                  animate={toolsOpen ? "open" : "closed"}
+                  className="flex w-max items-center gap-1.5 py-1.5 pl-2.5 pr-1.5"
+                >
+                  <motion.div variants={toolVariants} custom={0} className="flex">
+                    <button
+                      type="button"
+                      disabled={!canSee}
+                      onClick={() => canSee && fileInputRef.current?.click()}
+                      aria-disabled={!canSee}
+                      aria-label="Attach images"
+                      className={`${chip} ${
+                        !canSee
+                          ? "cursor-not-allowed opacity-35 hover:brightness-100 hover:text-muted"
+                          : pendingImages.length > 0
+                            ? chipImageOn
+                            : ""
+                      }`}
+                      title={canSee ? "Attach images" : "This model does not accept images"}
+                    >
+                      <ImagePlus className="h-3.5 w-3.5" strokeWidth={2} />
+                      <span className="hidden @[420px]/composer:inline">Image</span>
+                    </button>
+                  </motion.div>
+
+                  <motion.div variants={toolVariants} custom={1} className="flex">
+                    <button
+                      type="button"
+                      disabled={!canThink}
+                      onClick={() => canThink && setUseReasoning(!useReasoning)}
+                      aria-pressed={canThink && useReasoning}
+                      aria-disabled={!canThink}
+                      aria-label="Thinking"
+                      className={`${chip} ${
+                        !canThink
+                          ? "cursor-not-allowed opacity-35 hover:brightness-100 hover:text-muted"
+                          : useReasoning
+                            ? chipThinkOn
+                            : ""
+                      }`}
+                      title={canThink ? "Toggle Reasoning Mode" : "This model does not support thinking"}
+                    >
+                      <BrainCircuit className="h-3.5 w-3.5" strokeWidth={2} />
+                      <span className="hidden @[420px]/composer:inline">Thinking</span>
+                    </button>
+                  </motion.div>
+
+                  <motion.div variants={toolVariants} custom={2} className="flex">
+                    <button
+                      type="button"
+                      onClick={() => void toggleListening()}
+                      aria-pressed={isListening}
+                      aria-label={isListening ? "Stop recording" : "Voice input"}
+                      className={`${chip} ${isListening ? chipVoiceOn : ""}`}
+                      title={isListening ? "Stop Recording" : "Voice Input"}
+                    >
+                      {isListening ? (
+                        <>
+                          <MicOff className="h-3.5 w-3.5" strokeWidth={2} />
+                          <span className="hidden @[420px]/composer:inline">Recording</span>
+                          <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-alert opacity-75 motion-reduce:animate-none" />
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-alert" />
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Mic className="h-3.5 w-3.5" strokeWidth={2} />
+                          <span className="hidden @[420px]/composer:inline">Voice</span>
+                        </>
+                      )}
+                    </button>
+                  </motion.div>
+                </motion.div>
+              </motion.div>
 
               <AnimatePresence>
                 {micNotice && (
@@ -458,15 +534,16 @@ export function ChatInput({
               </AnimatePresence>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               {isLoading ? (
                 <button
                   type="button"
                   onClick={stopGeneration}
-                  className="sticker-sm flex h-10 w-10 items-center justify-center bg-foreground text-background transition-[filter] hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-nvidia-green"
+                  className="sticker-sm flex h-10 w-10 cursor-pointer items-center justify-center !border-foreground/30 !bg-panel !text-foreground transition-[background-color,border-color] duration-150 hover:!border-foreground/55 hover:!bg-[color-mix(in_srgb,var(--foreground)_12%,var(--panel))] focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-foreground motion-reduce:transition-none"
                   title="Stop generation"
+                  aria-label="Stop generation"
                 >
-                  <StopCircle className="h-4 w-4" strokeWidth={1.75} />
+                  <StopCircle className="h-4 w-4" strokeWidth={2} />
                 </button>
               ) : (
                 <button
