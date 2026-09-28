@@ -11,6 +11,8 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -18,6 +20,51 @@ import (
 )
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+type sshStageError struct {
+	stage string
+	err   error
+}
+
+func (e *sshStageError) Error() string { return e.stage + ": " + e.err.Error() }
+func (e *sshStageError) Unwrap() error { return e.err }
+
+// Only fixed public messages reach the API/logs; never expose remote output,
+// key contents, or arbitrary error text from the SSH server.
+func readinessFailure(err error) string {
+	var dns *net.DNSError
+	var key *knownhosts.KeyError
+	var network net.Error
+	var stage *sshStageError
+	var exit *ssh.ExitError
+	switch {
+	case errors.As(err, &dns):
+		return "The gateway could not resolve the Spark SSH hostname. Check the container hostname mapping."
+	case errors.As(err, &key):
+		return "Spark SSH host identity verification failed. Verify the Spark host key and the gateway known-hosts file."
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &network) && network.Timeout():
+		return "The gateway's Spark SSH readiness check timed out."
+	case errors.Is(err, context.Canceled):
+		return "The Spark SSH readiness check was cancelled."
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "The Spark refused the gateway's SSH connection. Check its SSH service and configured port."
+	case errors.As(err, &exit):
+		return "Spark SSH connected, but the restricted status helper failed. Check the helper installation and sudo permission."
+	case errors.As(err, &stage):
+		switch stage.stage {
+		case "handshake":
+			if strings.Contains(stage.err.Error(), "unable to authenticate") {
+				return "Spark rejected the gateway's SSH authentication. Check the configured account and authorized key."
+			}
+			return "The gateway could not complete the Spark SSH handshake."
+		case "response":
+			return "The Spark status helper returned an invalid response. Check the installed helper."
+		case "session", "command":
+			return "Spark SSH connected, but the status command could not complete."
+		}
+	}
+	return "The gateway could not complete the Spark SSH readiness check."
+}
 
 type hostStatus struct {
 	BootID            string   `json:"boot_id"`
@@ -36,6 +83,7 @@ func (s hostStatus) shutdownReadinessError() error {
 	}
 	return nil
 }
+
 type sparkHost struct {
 	addr   string
 	config *ssh.ClientConfig
@@ -89,13 +137,13 @@ func (h *sparkHost) run(parent context.Context, command string, out any) error {
 	defer stop()
 	clientConn, channels, requests, err := ssh.NewClientConn(conn, h.addr, h.config)
 	if err != nil {
-		return err
+		return &sshStageError{"handshake", err}
 	}
 	client := ssh.NewClient(clientConn, channels, requests)
 	defer client.Close()
 	session, err := client.NewSession()
 	if err != nil {
-		return err
+		return &sshStageError{"session", err}
 	}
 	defer session.Close()
 	var output boundedOutput
@@ -103,13 +151,13 @@ func (h *sparkHost) run(parent context.Context, command string, out any) error {
 	session.Stderr = io.Discard
 	// Commands are fixed, except for a strictly validated boot UUID during shutdown.
 	if err := session.Run(command); err != nil {
-		return err
+		return &sshStageError{"command", err}
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if err := json.Unmarshal(output.Bytes(), out); err != nil {
-		return errors.New("invalid Spark helper response")
+		return &sshStageError{"response", errors.New("invalid Spark helper response")}
 	}
 	return nil
 }
@@ -118,7 +166,7 @@ func (h *sparkHost) status(ctx context.Context) (hostStatus, error) {
 	var status hostStatus
 	err := h.run(ctx, "status", &status)
 	if err == nil && (!uuidPattern.MatchString(status.BootID) || status.State == "") {
-		err = errors.New("invalid Spark status")
+		err = &sshStageError{"response", errors.New("invalid Spark status")}
 	}
 	return status, err
 }
