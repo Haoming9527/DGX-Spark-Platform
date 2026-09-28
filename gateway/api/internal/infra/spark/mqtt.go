@@ -84,7 +84,8 @@ func connectMeter(ctx context.Context, c power.Config) (*meterSession, error) {
 	return s, nil
 }
 
-func (s *meterSession) close() { s.client.Disconnect(0) }
+func (s *meterSession) close()                        { s.client.Disconnect(0) }
+func (s *meterSession) disconnected() <-chan struct{} { return s.lost }
 func (s *meterSession) healthy(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err

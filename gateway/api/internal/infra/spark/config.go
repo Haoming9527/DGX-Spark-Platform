@@ -16,6 +16,7 @@ type Config struct {
 	ReadKey, ControlKey                       string
 	SSHAddr, SSHUser, KeyFile, KnownHostsFile string
 	OffMaxWatts                               *float64
+	StateDir                                  string
 	MeterError, ControlError, ShutdownError   string
 }
 
@@ -43,6 +44,10 @@ func LoadConfig(get func(string) string, pi power.Config) Config {
 	}
 	c.KeyFile = strings.TrimSpace(get("DGX_SPARK_SSH_KEY_FILE"))
 	c.KnownHostsFile = strings.TrimSpace(get("DGX_SPARK_SSH_KNOWN_HOSTS_FILE"))
+	c.StateDir = strings.TrimSpace(get("DGX_SPARK_STATE_DIR"))
+	if c.StateDir == "" {
+		c.StateDir = "/var/lib/dgx-spark-power"
+	}
 	value := strings.TrimSpace(get("DGX_SPARK_OFF_MAX_WATTS"))
 	if value == "" {
 		c.ShutdownError = "Calibrate and configure the Spark's off-state wattage before using shutdown."

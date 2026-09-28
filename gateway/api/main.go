@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Haoming9527/dgx-spark-platform/gateway/api/internal/admission"
 	"github.com/Haoming9527/dgx-spark-platform/gateway/api/internal/ai"
 	"github.com/Haoming9527/dgx-spark-platform/gateway/api/internal/infra/power"
 	"github.com/Haoming9527/dgx-spark-platform/gateway/api/internal/infra/spark"
@@ -42,13 +43,16 @@ func run() error {
 	}
 	monitor := power.New(powerConfig)
 	mux.Handle("/infra/pi-power", power.Handler(monitor, powerConfig.ReadKey))
-	sparkController := spark.New(ctx, spark.LoadConfig(os.Getenv, powerConfig))
+	admissionGate := admission.New()
+	sparkController := spark.New(ctx, spark.LoadConfig(os.Getenv, powerConfig), admissionGate)
+	defer sparkController.Close()
 	mux.Handle("/infra/dgx-spark", sparkController.Handler())
 	mux.Handle("/infra/dgx-spark/actions", sparkController.Handler())
 	// Unknown infrastructure paths must never enter model dispatch.
 	mux.HandleFunc("/infra/", http.NotFound)
 
 	inference, err := ai.New(ctx, ai.Config{
+		Admission:   admissionGate,
 		OllaURL:     envOr("OLLA_URL", "http://127.0.0.1:40114"),
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		ChatKey:     os.Getenv("CHAT_SERVICE_KEY"),

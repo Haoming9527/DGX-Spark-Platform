@@ -1,12 +1,16 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { Cpu, Loader2, Power } from "lucide-react";
 import { useSparkPower } from "./useSparkPower";
 
 function value(number: number | null | undefined, digits: number) {
   return number == null ? "—" : number.toLocaleString(undefined, { maximumFractionDigits: digits });
+}
+
+function interval(seconds: number) {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 const buttonClass = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-panel-hover focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-foreground disabled:cursor-not-allowed disabled:opacity-50";
@@ -22,10 +26,16 @@ export function DgxSparkPowerPanel() {
   const running = operation?.status === "running";
   const busy = submitting || running;
   const controlsBlocked = busy || Boolean(retryRequest) || Boolean(accessError);
+  const shutdownConfirmationBlocked = busy || Boolean(accessError) ||
+    (retryShutdown ? !retryRequest : !snapshot?.can_shutdown);
+  const powerOnReason = snapshot?.power_on_cooldown_seconds ?
+    `Power on available in ${interval(snapshot.power_on_cooldown_seconds)}.` : snapshot?.power_on_blocked_reason;
+  const shutdownReason = snapshot?.shutdown_cooldown_seconds ?
+    `Shutdown available in ${interval(snapshot.shutdown_cooldown_seconds)}.` : snapshot?.shutdown_blocked_reason;
   const issue = accessError ? null : snapshot?.configuration_error || snapshot?.error || error;
   const relayLabel = snapshot?.relay_state === "ON" ? "On" : snapshot?.relay_state === "OFF" ? "Off" : "Unknown";
   const machineLabel = loading ? "Checking…" : snapshot?.relay_state === "OFF" ? "Powered off" :
-    running ? operation.action === "on" ? "Starting" : "Shutting down" :
+    running ? operation.action === "on" ? "Starting" : operation.phase === "draining" ? "Finishing AI requests" : "Shutting down" :
       snapshot?.machine_status === "online" ? "Online" :
         snapshot?.relay_state === "ON" ? "Power on; Spark unavailable" : "Unknown";
   const measurements = [
@@ -45,6 +55,10 @@ export function DgxSparkPowerPanel() {
     dialog.current?.showModal();
     cancel.current?.focus();
   };
+
+  useEffect(() => {
+    if (shutdownConfirmationBlocked) dialog.current?.close();
+  }, [shutdownConfirmationBlocked]);
 
   return (
     <section ref={section} tabIndex={-1} className="sticker max-w-3xl px-5 py-6 sm:px-6" aria-labelledby={`${id}-title`} aria-busy={loading}>
@@ -99,18 +113,25 @@ export function DgxSparkPowerPanel() {
 
       <div className="mt-5 border-t border-border pt-5">
         <div className="flex flex-col gap-3 min-[520px]:flex-row min-[520px]:flex-wrap">
-          <button type="button" className={buttonClass} disabled={controlsBlocked || !snapshot?.can_power_on} onClick={() => void submit("on")}>
-            <Power className="h-4 w-4 shrink-0" aria-hidden="true" />
-            Power on
-          </button>
-          <button type="button" className={buttonClass} disabled={controlsBlocked || !snapshot?.can_shutdown} onClick={(event) => confirmShutdown(event.currentTarget)}>
-            Shut down &amp; power off
-          </button>
+          <div className="min-w-0 flex-1">
+            <button type="button" className={`${buttonClass} w-full`} aria-describedby={powerOnReason ? `${id}-power-on-reason` : undefined} disabled={controlsBlocked || !snapshot?.can_power_on} onClick={() => void submit("on")}>
+              <Power className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Power on
+            </button>
+            {powerOnReason && <p id={`${id}-power-on-reason`} className="mt-2 text-sm leading-6 text-muted tabular-nums">{powerOnReason}</p>}
+          </div>
+          <div className="min-w-0 flex-1">
+            <button type="button" className={`${buttonClass} w-full`} aria-describedby={shutdownReason ? `${id}-shutdown-reason` : undefined} disabled={controlsBlocked || !snapshot?.can_shutdown} onClick={(event) => confirmShutdown(event.currentTarget)}>
+              Shut down &amp; power off
+            </button>
+            {shutdownReason && <p id={`${id}-shutdown-reason`} className="mt-2 text-sm leading-6 text-muted tabular-nums">{shutdownReason}</p>}
+          </div>
         </div>
         <div className="mt-3 text-sm leading-6" role="status" aria-live="polite" aria-atomic="true">
           {submitting ? <p className="flex items-center gap-2"><Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />Sending request…</p> :
             operation && <p className="flex items-start gap-2">{running && <Loader2 className="mt-1 h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />}<span>{operation.message}</span></p>}
           {running && <p className="mt-1 text-muted">You can leave this page. The Pi will finish the operation.</p>}
+          {snapshot?.admission_blocked_reason && <p className="mt-1 text-muted">AI requests paused. {snapshot.admission_blocked_reason}</p>}
           {actionError && <p className="mt-2 text-muted">{actionError}</p>}
         </div>
         {retryRequest && !accessError && (
@@ -125,10 +146,10 @@ export function DgxSparkPowerPanel() {
         else section.current?.focus();
       }}>
         <h3 id={`${id}-confirm-title`} className="text-lg font-bold">Shut down DGX Spark?</h3>
-        <p id={`${id}-confirm-description`} className="mt-3 text-sm leading-6 text-muted">Running jobs and AI requests will stop. The Pi will request a normal shutdown, then cut plug power only after the shutdown checks pass.</p>
+        <p id={`${id}-confirm-description`} className="mt-3 text-sm leading-6 text-muted">New AI requests will be blocked immediately when shutdown is accepted. Existing requests get up to five minutes to finish; if they are still running, shutdown is cancelled. Other jobs on the Spark may stop. The Pi will cut plug power only after the shutdown checks pass.</p>
         <div className="mt-6 flex flex-col-reverse gap-3 min-[420px]:flex-row min-[420px]:justify-end">
           <button ref={cancel} type="button" className={buttonClass} onClick={() => dialog.current?.close()}>Cancel</button>
-          <button type="button" className={`${buttonClass} bg-foreground text-background hover:bg-foreground/90`} disabled={busy || Boolean(accessError) || (!retryShutdown && !snapshot?.can_shutdown)} onClick={() => {
+          <button type="button" className={`${buttonClass} bg-foreground text-background hover:bg-foreground/90`} disabled={shutdownConfirmationBlocked} onClick={() => {
             dialog.current?.close();
             void submit("shutdown", retryShutdown);
           }}>Shut down &amp; power off</button>

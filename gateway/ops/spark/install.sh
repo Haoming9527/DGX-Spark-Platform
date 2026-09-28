@@ -53,13 +53,14 @@ temp_dir=$(mktemp -d)
 trap 'rm -f "$temp_dir/authorized_keys" "$temp_dir/sudoers"; rmdir "$temp_dir"' EXIT HUP INT TERM
 printf 'restrict,command="/usr/local/sbin/spark-power-command" %s\n' "$key" > "$temp_dir/authorized_keys"
 cat > "$temp_dir/sudoers" <<'SUDOERS'
-# This account can only run the fixed status and normal shutdown helper commands.
-spark-power ALL=(root) NOPASSWD: /usr/local/sbin/spark-power-helper status, /usr/local/sbin/spark-power-helper shutdown
+# The shutdown helper validates exactly one expected boot UUID before acting.
+# The wildcard cannot authorize other helper operations; its argument count is strict.
+spark-power ALL=(root) NOPASSWD: /usr/local/sbin/spark-power-helper status, /usr/local/sbin/spark-power-helper shutdown *
 SUDOERS
 /usr/sbin/visudo -cf "$temp_dir/sudoers" >/dev/null
 install -o root -g root -m 0440 "$temp_dir/sudoers" /etc/sudoers.d/spark-power
 install -o root -g root -m 0644 "$temp_dir/authorized_keys" "$account_home/.ssh/authorized_keys"
-printf '%s\n' 'dgx-gateway spark-power account v1' > "$marker"
+printf '%s\n' 'dgx-gateway spark-power account v2' > "$marker"
 chown root:root "$marker"
 chmod 0644 "$marker"
 

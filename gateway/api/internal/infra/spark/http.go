@@ -83,9 +83,9 @@ func (c *Controller) Handler() http.Handler {
 			failure(w, 400, "Expected an on or shutdown action and a UUID request_id.")
 			return
 		}
-		op, status, message := c.Start(body.Action, body.RequestID, actor)
+		op, status, code, message := c.Start(body.Action, body.RequestID, actor)
 		if message != "" {
-			failure(w, status, message)
+			jsonResponse(w, status, map[string]string{"error": message, "code": code})
 			return
 		}
 		jsonResponse(w, status, op)

@@ -6,6 +6,11 @@ Infrastructure monitoring continues when the DGX Spark and Olla are offline.
 
 For the separate DGX Spark Singapore plug, admin/operator controls, SSH setup and
 attended shutdown calibration, follow [Spark power setup](docs/spark-power.md).
+Spark controls enforce a three-minute off interval and five-minute ready interval,
+drain existing inference before shutdown, and respect a Spark maintenance lock.
+The persistent `spark-power-state` Compose volume stores the safety journal;
+do not remove it during updates. Existing Spark installations must upgrade the
+restricted helper to protocol version 2 before shutdown is available.
 
 ```text
 gateway/
