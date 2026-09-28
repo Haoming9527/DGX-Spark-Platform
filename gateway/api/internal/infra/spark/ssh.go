@@ -26,6 +26,48 @@ type sshStageError struct {
 	err   error
 }
 
+type sshCommandError struct {
+	err    error
+	stderr string
+}
+
+func (e *sshCommandError) Error() string { return e.err.Error() }
+func (e *sshCommandError) Unwrap() error { return e.err }
+
+func shutdownFailure(err error) string {
+	var command *sshCommandError
+	if errors.As(err, &command) {
+		message := strings.ToLower(command.stderr)
+		switch {
+		case strings.Contains(message, "operation inhibited by"):
+			return "Shutdown blocked by an application or maintenance task."
+		case strings.Contains(message, "is logged in"):
+			return "Shutdown blocked by a logged-in user. Log out of desktop and SSH sessions."
+		case strings.Contains(message, "maintenance lock is active"):
+			return "Shutdown blocked by the Spark maintenance lock."
+		case strings.Contains(message, "rebooted since"):
+			return "Shutdown cancelled because the Spark restarted."
+		case strings.Contains(message, "a password is required"), strings.Contains(message, "not allowed to execute"):
+			return "Shutdown helper permission denied. Reinstall the Spark power helper."
+		}
+	}
+	return "Shutdown was not acknowledged. Check the gateway log for the SSH failure."
+}
+
+// Drain stderr without letting remote output grow memory or block stdout.
+type diagnosticOutput struct{ bytes.Buffer }
+
+func (w *diagnosticOutput) Write(p []byte) (int, error) {
+	n := len(p)
+	if remaining := 4096 - w.Len(); remaining > 0 {
+		if len(p) > remaining {
+			p = p[:remaining]
+		}
+		_, _ = w.Buffer.Write(p)
+	}
+	return n, nil
+}
+
 func (e *sshStageError) Error() string { return e.stage + ": " + e.err.Error() }
 func (e *sshStageError) Unwrap() error { return e.err }
 
@@ -147,11 +189,15 @@ func (h *sparkHost) run(parent context.Context, command string, out any) error {
 	}
 	defer session.Close()
 	var output boundedOutput
+	var diagnostic diagnosticOutput
 	session.Stdout = &output
 	session.Stderr = io.Discard
+	if strings.HasPrefix(command, "shutdown ") {
+		session.Stderr = &diagnostic
+	}
 	// Commands are fixed, except for a strictly validated boot UUID during shutdown.
 	if err := session.Run(command); err != nil {
-		return &sshStageError{"command", err}
+		return &sshStageError{"command", &sshCommandError{err: err, stderr: strings.TrimSpace(diagnostic.String())}}
 	}
 	if err := ctx.Err(); err != nil {
 		return err
