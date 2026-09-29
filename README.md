@@ -11,7 +11,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-75B900?style=flat-square" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/API-OpenAI_compatible-007B51?style=flat-square" alt="OpenAI-compatible API">
-  <img src="https://img.shields.io/badge/hardware-DGX_Spark-75B900?style=flat-square" alt="DGX Spark hardware">
+  <img src="https://img.shields.io/badge/inference-Ollama-75B900?style=flat-square" alt="Ollama inference">
   <img src="https://img.shields.io/badge/deploy-Docker_Compose-2496ED?style=flat-square" alt="Docker Compose deployment">
 </p>
 
@@ -23,22 +23,14 @@
   <a href="#openai-compatible-clients">API clients</a>
 </p>
 
-| Linux server | DGX Spark | Athom / Tasmota |
+| Linux server | Inference server | Athom / Tasmota |
 | --- | --- | --- |
-| Gateway, routing, and MQTT | Local models and Ollama | Optional power metering and Spark relay control |
-| Raspberry Pi 5 in this setup | Your inference machine | Connected to the physical hardware |
+| Gateway, routing, and optional MQTT | Local models through Ollama | Optional power metering and Spark relay control |
+| Raspberry Pi 5 in the reference setup | DGX Spark in the reference setup | Connected to the physical hardware |
 
-Chat with your models, connect OpenAI-compatible clients, manage access and usage, and control the hardware that runs it - all from one web interface.
+Share local AI models through web chat and an OpenAI-compatible API, manage access, and track usage from one interface. Connect your own Ollama server; a DGX Spark is not required for inference.
 
-A Linux server runs the gateway and MQTT broker; this deployment uses a Raspberry Pi 5. The DGX Spark runs the models. Keeping the gateway on a separate machine lets you check readings and manage Spark power while the Spark is off, provided the server, network, and frontend services are available.
-
-## From your desk to a shared AI service
-
-Give collaborators a chat URL or a personal API key. Let trusted operators manage the Spark's power. See the electricity your hardware is actually using, and coordinate shutdown with the requests running through the gateway.
-
-| Share the models | Manage access | Connect the hardware |
-| --- | --- | --- |
-| Streamed chat and OpenAI-compatible clients | Personal API keys, roles, and model restrictions | Live meter readings and guarded Spark power controls |
+A separate Linux server hosts the gateway so power controls remain reachable when the inference machine is off. The validated reference setup uses a Raspberry Pi 5, DGX Spark, and Tasmota plugs.
 
 ## What you can do
 
@@ -49,7 +41,7 @@ Give collaborators a chat URL or a personal API key. Let trusted operators manag
 - **Control the Spark** — power on remotely or request a graceful SSH shutdown followed by guarded plug cutoff.
 - **Separate responsibilities** — users get AI features, operators also get Spark controls, and admins manage the platform.
 
-Bring your own inference server, database, and domain. The reference deployment uses a DGX Spark and Raspberry Pi 5; the inference layer can connect to other Ollama servers. The power controller and its setup guide specifically target the Spark.
+Bring your own Ollama server, database, and domain. Optional power controls currently support the Spark/Tasmota setup.
 
 ## Hardware and services
 
@@ -90,7 +82,7 @@ flowchart TD
     end
 
     Gateway --> DB
-    Olla --> Inference[DGX Spark / Ollama endpoint]
+    Olla --> Inference[Configured Ollama servers]
     Gateway -->|Restricted SSH shutdown| Spark[DGX Spark]
     MQTT <--> PiMeter[Pi power meter — read only]
     MQTT <--> SparkPlug[Spark smart plug — readings and relay]
@@ -109,14 +101,12 @@ flowchart TD
 | **Next.js** | Chat, accounts, API keys, usage views, and authenticated infrastructure UI |
 | **Go gateway** | Inference authentication and streaming, usage recording, MQTT readings, and Spark power operations |
 | **Olla** | Model discovery, health checks, and routing to configured inference servers |
-| **Ollama on Spark** | Model execution and inference |
-| **Mosquitto on Pi** | Communication with the Tasmota plugs |
+| **Ollama** | Model execution on your inference hardware |
+| **Mosquitto** | Communication with the optional Tasmota plugs |
 | **Neon PostgreSQL** | Accounts, roles, API keys, model restrictions, inference usage, and shared rate limits |
-| **Cloudflare Tunnel** | Public HTTPS access to the Pi gateway |
+| **Cloudflare Tunnel** | Public HTTPS access to the Linux gateway server |
 
-Ollama already exposes OpenAI-compatible endpoints. This project's gateway adds shared authentication, personal API keys, access policies, usage tracking, routing through Olla, and infrastructure controls around those endpoints.
-
-The Go code separates inference in `gateway/api/internal/ai/` from infrastructure in `gateway/api/internal/infra/`.
+The gateway adds authentication, access policies, usage tracking, and hardware controls around Ollama's inference API.
 
 ## Roles and permissions
 
@@ -129,7 +119,7 @@ The Go code separates inference in `gateway/api/internal/ai/` from infrastructur
 
 Operators use **Power** (`/power`). Admins can also control the Spark under **Admin → Infrastructure** (`/admin/infra`). Server-side checks reload the account's role and disabled status for each infrastructure request.
 
-New accounts receive the `user` role. For a new installation, create your account through signup, then promote that specific account to `admin` in the database. Subsequent role assignments are available in **Admin → Users**.
+New accounts start as `user`. See setup below to create the first admin; manage subsequent roles in **Admin → Users**.
 
 ## Technology
 
@@ -210,7 +200,7 @@ Existing installations must also apply [the rate-limit migration](sql/migrations
 
 An error containing `23514` and `users_role_check` while assigning `operator` means that constraint still needs updating. Do not reset an existing database to resolve it.
 
-### 3. Start the gateway on the Pi
+### 3. Start the gateway on the Linux server
 
 ```bash
 cd gateway
@@ -316,19 +306,17 @@ Vercel supplies the trusted client IP automatically. When self-hosting Next.js b
 
 ## Spark power control
 
-To add the optional hardware features, install and configure Mosquitto on the Pi with authentication and LAN-only access. Configure both Tasmota devices with the Pi's broker address, broker credentials, distinct topics, and the standard `%prefix%/%topic%/` FullTopic. Copy those settings into `gateway/.env`. Follow the [Pi meter guide](gateway/README.md) for read-only monitoring, then the [Spark setup guide](gateway/docs/spark-power.md) for SSH keys, the restricted helper, plug calibration, and Auto Boot. Mosquitto must remain available when the Spark is off.
+Configure an authenticated, LAN-only Mosquitto broker on the gateway server. Set each Tasmota device's broker credentials, distinct topic, and `%prefix%/%topic%/` FullTopic, then copy the settings into `gateway/.env`. See the [meter guide](gateway/README.md) and [power setup guide](gateway/docs/spark-power.md) for installation, SSH keys, and calibration.
 
-The Spark controller uses a dedicated MQTT topic and a restricted SSH key. Power-on restores the plug's AC supply; Spark's UEFI **Auto Boot** setting must allow it to start when power returns.
+Power-on restores AC through the plug; enable **Auto Boot** in the Spark's UEFI. The broker and gateway must remain available while the Spark is off.
 
-**Shut down & power off** requests normal OS shutdown, requires a successful acknowledgement, then waits for SSH unavailability and 60 continuous seconds of fresh, advancing sensor readings at or below a calibrated off-state wattage. Failed checks cancel cutoff. An uncertain relay-command result is reported as unknown rather than blindly retried.
+**Shut down & power off** blocks new gateway inference and gives active requests up to five minutes to finish. It then requests graceful SSH shutdown and requires acknowledgement, SSH unavailability, and 60 continuous seconds of fresh readings at or below the calibrated off-state wattage before cutting power. Failed checks cancel cutoff; uncertain relay commands are not blindly retried.
 
-The gateway blocks new inference as soon as shutdown is accepted and gives existing requests up to five minutes to finish; a drain timeout cancels shutdown. It enforces three minutes off before power-on and five minutes of authenticated readiness before shutdown. A persistent Pi volume preserves operation records, while restart recovery requires fresh observations and never replays power commands. A root-owned Spark maintenance lock and Linux shutdown inhibitors protect critical maintenance. These intervals are platform precautions, not hardware lifespan guarantees; direct workloads need their own lock or inhibitor.
+Safeguards include a three-minute minimum off interval, five minutes of authenticated readiness before shutdown, persistent operation records, and restart recovery without command replay. Use the maintenance lock or shutdown inhibitors for work outside the gateway.
 
-The threshold is measured on your hardware while the Spark is fully shut down and the plug remains on. It is not a universal value. This is a practical safeguard, not absolute proof of completed shutdown; perform the first complete operation with someone present.
+Calibrate the threshold for each installation; low wattage alone does not prove shutdown. Readings and operation progress are live, with no stored telemetry history.
 
-Follow the [Spark power setup guide](gateway/docs/spark-power.md) for the restricted SSH helper, host-key verification, Compose secrets, calibration, and commissioning. The feature provides live readings and operation progress; it does not store 30-day telemetry history.
-
-The SSH address must include its port, for example `spark-2c12.local:22`. A `.local` hostname must resolve from the gateway's Docker container as well as from the Pi shell. Installing Avahi on the Pi alone does not configure the container's resolver. A reserved LAN IP is an alternative when mDNS is unavailable. “Spark unavailable” means the gateway could not verify SSH access; it does not establish that the machine is asleep.
+Use `host:port` for SSH. A `.local` hostname must resolve inside the gateway container; otherwise use a reserved LAN IP. “Spark unavailable” means SSH readiness could not be verified.
 
 ## OpenAI-compatible clients
 
@@ -384,20 +372,13 @@ docker compose logs --tail=50 api
 
 Preserve existing `.env` files and add new settings from the examples as needed. After changing gateway environment values, use `docker compose up -d api` to recreate the container; `docker compose restart` does not load those changes. Deploy frontend updates separately and apply any required database migrations.
 
-For this security update, apply `sql/migrations/20260929_rate_limit_buckets.sql` in Neon's SQL editor first, then rebuild both Compose services using the command above and redeploy the frontend. For a locally hosted frontend, run `npm ci`, `npm run build`, and restart its process. Existing Spark SSH keys and helpers do not need reinstalling for this update.
+For a locally hosted frontend, run `npm ci`, `npm run build`, and restart its process. Apply missing migrations listed in [database setup](#2-prepare-the-database) before deploying.
 
 For development, `npm run lint` checks the frontend. With a compatible local Go toolchain, run `go vet ./...` and `go build .` from `gateway/api/`.
 
 ## Contributions welcome
 
-Happy to welcome contributions of any code, documentation, bug reports, design improvements, or experience running the project on different hardware.
-
-- **Found a bug?** Open an issue with steps to reproduce, your setup, and logs with secrets removed.
-- **Have an idea?** Start an issue to discuss it, especially before a larger change.
-- **Want to build?** Fork the repository and open a pull request explaining what changed and how you checked it.
-- **Tried another setup?** Share what worked with your Linux server, AI hardware, or power meter to help others get started.
-
-Please keep contributions focused and preserve authentication and power-control safeguards. Never include API keys, passwords, private SSH keys, or personal data in issues or pull requests.
+Code, documentation, bug reports, and hardware integrations are welcome. Open an issue for ideas or reproducible bugs, or submit a focused pull request explaining your changes and checks. Preserve authentication and power-control safeguards, and remove secrets from shared logs.
 
 ## License and attribution
 
