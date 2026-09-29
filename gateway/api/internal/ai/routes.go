@@ -39,7 +39,7 @@ func (s *Server) routes() http.Handler {
 			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 			writeLiveModelList(rec, ollaURL, kind, restricted, admin)
 			if ident.keyID != "" && pool != nil {
-				go logUsage(context.Background(), pool, ident.keyID, rec.status, "")
+				go logUsage(context.Background(), pool, ident.keyID, rec.status, "", tokenUsage{})
 			}
 			return
 		}
@@ -84,6 +84,13 @@ func (s *Server) routes() http.Handler {
 		}
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		usageModel := ""
+		if ident.keyID != "" && pool != nil {
+			rec.usage = &usageCapture{}
+			defer func() {
+				rec.usage.finish()
+				go logUsage(context.Background(), pool, ident.keyID, rec.status, usageModel, rec.usage.tokens)
+			}()
+		}
 		if !modelOnAllowlist(requestedModel, gate.live, gate.restricted, admin) {
 			writeLocalModelNotFound(rec)
 		} else {
@@ -115,9 +122,6 @@ func (s *Server) routes() http.Handler {
 					proxy.ServeHTTP(rec, prepared)
 				}
 			}
-		}
-		if ident.keyID != "" && pool != nil {
-			go logUsage(context.Background(), pool, ident.keyID, rec.status, usageModel)
 		}
 	})
 }

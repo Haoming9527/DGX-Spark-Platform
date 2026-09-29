@@ -9,6 +9,7 @@ type statusRecorder struct {
 	http.ResponseWriter
 	status      int
 	wroteHeader bool
+	usage       *usageCapture
 }
 
 func (s *statusRecorder) WriteHeader(code int) {
@@ -23,7 +24,11 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	if !s.wroteHeader {
 		s.WriteHeader(http.StatusOK)
 	}
-	return s.ResponseWriter.Write(b)
+	n, err := s.ResponseWriter.Write(b)
+	if s.usage != nil && s.status >= 200 && s.status < 300 {
+		s.usage.write(b[:n], s.Header().Get("Content-Type"))
+	}
+	return n, err
 }
 
 func (s *statusRecorder) Flush() {

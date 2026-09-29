@@ -106,6 +106,16 @@ func readRequestModel(w http.ResponseWriter, r *http.Request) (string, error) {
 	}
 	// Forward exactly the model that was authorized, without ambiguous aliases.
 	payload["model"], _ = json.Marshal(model)
+	if strings.Contains(r.URL.Path, "/v1/") && (strings.HasSuffix(r.URL.Path, "/chat/completions") || strings.HasSuffix(r.URL.Path, "/completions")) && string(payload["stream"]) == "true" {
+		options := map[string]json.RawMessage{}
+		if rawOptions, ok := payload["stream_options"]; ok && string(rawOptions) != "null" {
+			if json.Unmarshal(rawOptions, &options) != nil {
+				return "", errors.New("Invalid stream_options.")
+			}
+		}
+		options["include_usage"] = json.RawMessage("true")
+		payload["stream_options"], _ = json.Marshal(options)
+	}
 	if _, ok := payload["name"]; ok {
 		payload["name"] = payload["model"]
 	}

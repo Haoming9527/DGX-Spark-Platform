@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { ModelUsageChart } from "./ModelUsageChart";
 import { BarChart3, Zap, Activity, HelpCircle } from "lucide-react";
 import { formatCompactNumber } from "../../lib/formatNumber";
 
@@ -250,24 +251,7 @@ export function UsageOverview({ keys, keysLoading, onKeyClick }: UsageOverviewPr
           </div>
         )}
       </div>
-      {keys.length > 0 && byModel.length > 0 && (
-        <div className="sticker rounded-xl sm:rounded-2xl p-4 sm:p-6 space-y-3">
-          <div className="text-sm font-bold">By model</div>
-          <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-            {byModel.map((row) => {
-              const share = totalRequests > 0 ? Math.round((row.requests / totalRequests) * 100) : 0;
-              return (
-                <div key={row.model} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                  <code className="min-w-0 truncate font-mono text-xs">{row.model}</code>
-                  <div className="shrink-0 tabular-nums text-foreground/70">
-                    {formatCompactNumber(row.requests)} req · {share}%
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {keys.length > 0 && <ModelUsageChart rows={byModel} loading={usageLoading} error={usageError} />}
     </div>
   );
 }
