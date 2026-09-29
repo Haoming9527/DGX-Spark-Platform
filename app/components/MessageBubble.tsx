@@ -20,6 +20,17 @@ interface MessageBubbleProps {
   streaming?: boolean;
 }
 
+const thoughtComponents: Components = {
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
+  ),
+  table: ({ children }) => (
+    <div className="my-3 max-w-full overflow-x-auto">
+      <table>{children}</table>
+    </div>
+  ),
+};
+
 function isProseMistakenForCode(code: string): boolean {
   const t = code.trim();
   if (!t || t.includes("\n")) return false;
@@ -206,8 +217,12 @@ export function MessageBubble({ message, onRetry, showActions, streaming = false
                 </span>
               )}
             </summary>
-            <div className="custom-scrollbar mt-2 max-h-64 overflow-y-auto overscroll-contain whitespace-pre-wrap border-t border-white/10 pt-2.5 pl-1 text-[13px] leading-relaxed text-[#a8a8a8]">
-              {message.thoughtProcess}
+            <div className="custom-scrollbar mt-2 max-h-80 overflow-y-auto overscroll-contain border-t border-white/10 px-1 pt-3">
+              <div className="prose prose-sm prose-invert max-w-none break-words text-[13px] leading-relaxed text-[#b8b8b8] prose-p:my-2.5 prose-headings:mb-2 prose-headings:mt-4 prose-headings:text-sm prose-headings:font-semibold prose-headings:text-[#ededed] prose-strong:font-semibold prose-strong:text-[#ededed] prose-ol:my-3 prose-ul:my-2 prose-li:my-1 prose-li:marker:text-[#a8a8a8] prose-a:text-[#a3d858] prose-a:underline prose-code:rounded prose-code:bg-white/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-[#ededed] prose-code:before:content-none prose-code:after:content-none prose-pre:overflow-x-auto prose-pre:bg-black/25 prose-pre:text-[#dedede] prose-blockquote:border-white/20 prose-blockquote:text-[#b8b8b8] prose-th:text-[#ededed] prose-th:border-white/20 prose-td:border-white/10 [&>:first-child]:mt-0 [&>:last-child]:mb-0 [&_pre_code]:bg-transparent [&_pre_code]:p-0">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={thoughtComponents}>
+                  {message.thoughtProcess}
+                </ReactMarkdown>
+              </div>
             </div>
           </details>
         )}
