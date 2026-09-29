@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { ModelUsageChart } from "./ModelUsageChart";
 import { Info, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { formatCompactNumber } from "../../lib/formatNumber";
@@ -457,21 +458,7 @@ export function UsageDetails({
           </div>
         </div>
 
-        {byModel.length > 0 && (
-          <div className="sticker rounded-xl border border-border p-4 space-y-3">
-            <div className="text-sm font-bold">By model</div>
-            <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-              {byModel.map((row) => (
-                <div key={row.model} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                  <code className="min-w-0 truncate font-mono text-xs">{row.model}</code>
-                  <span className="shrink-0 tabular-nums text-foreground/70">
-                    {formatCompactNumber(row.requests)} req
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <ModelUsageChart rows={byModel} loading={loading} />
       </div>
     </div>
   );

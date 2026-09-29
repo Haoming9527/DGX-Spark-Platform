@@ -30,6 +30,7 @@ func newOllaProxy(ollaURL *url.URL) *httputil.ReverseProxy {
 		}
 		r.Host = ollaURL.Host
 		r.Header.Del("Authorization")
+		r.Header.Del("Accept-Encoding")
 	}
 	return proxy
 }
