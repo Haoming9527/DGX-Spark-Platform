@@ -188,28 +188,20 @@ export function ModelStickers({ docked, className = "" }: ModelStickersProps) {
             </span>
         );
 
-        if (!docked) {
-          return (
-            <div
-              key={model.id}
-              className="pointer-events-none absolute"
-              style={{
-                left: idle.left,
-                top: idle.top,
-                transform: `translate(-50%, -50%) rotate(${idle.rotate}deg) scale(${idleScale})`,
-              }}
-            >
-              {mark}
-            </div>
-          );
-        }
-
-        const animate =
-          isMobile
+        const animate = !docked
+          ? {
+              left: `calc(${idle.left} + 0rem)`,
+              top: `calc(${idle.top} + 0rem)`,
+              x: "-50%",
+              y: "-50%",
+              rotate: idle.rotate,
+              scale: idleScale,
+              opacity: 1,
+            }
+          : isMobile
             ? {
-                left: onLeft ? "-18%" : "118%",
-                right: "auto" as const,
-                top: idle.top,
+                left: onLeft ? "calc(-18% + 0rem)" : "calc(118% + 0rem)",
+                top: `calc(${idle.top} + 0rem)`,
                 x: "-50%",
                 y: "-50%",
                 rotate: onLeft ? -18 : 18,
@@ -217,11 +209,10 @@ export function ModelStickers({ docked, className = "" }: ModelStickersProps) {
                 opacity: 0,
               }
             : {
-                left: onLeft ? "0.65rem" : "auto",
-                right: onLeft ? "auto" : "0.65rem",
-                top: dockedTop,
-                x: 0,
-                y: 0,
+                left: onLeft ? "calc(0% + 0.65rem)" : "calc(100% - 0.65rem)",
+                top: `calc(0% + ${dockedTop})`,
+                x: onLeft ? "0%" : "-100%",
+                y: "0%",
                 rotate: onLeft ? -6 : 6,
                 scale: viewport === "laptop" ? 0.8 : 0.88,
                 opacity: 0.9,
@@ -236,7 +227,14 @@ export function ModelStickers({ docked, className = "" }: ModelStickersProps) {
             transition={
               reduceMotion
                 ? { duration: 0 }
-                : { type: "spring", stiffness: 120, damping: 18, mass: 0.85 }
+                : {
+                    duration: docked ? 0.5 : 0.65,
+                    ease: [0.4, 0, 0.2, 1],
+                    delay: docked ? railIndex * 0.015 : 0,
+                    opacity: isMobile && docked
+                      ? { duration: 0.15, delay: 0.3 + railIndex * 0.015 }
+                      : { duration: 0.3 },
+                  }
             }
           >
             {mark}

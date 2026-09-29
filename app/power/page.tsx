@@ -7,7 +7,7 @@ import { DgxSparkPowerPanel } from "@/app/components/infra/DgxSparkPowerPanel";
 import { ExitBack } from "@/app/components/ui/ExitBack";
 import { ThemeToggle } from "@/app/components/ui/ThemeToggle";
 
-export default function SparkPowerPage() {
+export default function PowerPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
 
@@ -35,7 +35,7 @@ export default function SparkPowerPage() {
         <div className="sticker flex items-center justify-between gap-3 !rounded-full px-2 py-2 sm:px-3">
           <div className="flex min-w-0 items-center gap-3">
             <ExitBack href="/" />
-            <h1 className="font-display text-[15px] font-bold uppercase tracking-[0.04em]">Spark Power</h1>
+            <h1 className="font-display text-[15px] font-bold uppercase tracking-[0.04em]">Power</h1>
           </div>
           <ThemeToggle />
         </div>

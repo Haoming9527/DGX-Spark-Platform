@@ -11,6 +11,7 @@ import oneLight from "react-syntax-highlighter/dist/esm/styles/prism/one-light";
 import type { Components } from "react-markdown";
 import { StickerBusy } from "./ui/StickerBusy";
 import { useTheme } from "./ui/ThemeToggle";
+import Image from "next/image";
 
 interface MessageBubbleProps {
   message: Message;
@@ -153,11 +154,14 @@ export function MessageBubble({ message, onRetry, showActions, streaming = false
           {message.images && message.images.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {message.images.map((src, i) => (
-                <img
+                <Image
                   key={`${message.id}-img-${i}`}
                   src={src}
                   alt=""
-                  className="max-h-40 max-w-full rounded-xl object-cover ring-1 ring-border"
+                  width={640}
+                  height={480}
+                  unoptimized
+                  className="h-auto max-h-40 w-auto max-w-full rounded-xl object-contain ring-1 ring-border"
                 />
               ))}
             </div>

@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
           clearCookie
         );
       }
-      return json({ error: statusRes.statusText }, { status: statusRes.status }, clearCookie);
+      return json({ error: "Gateway request failed." }, { status: statusRes.status }, clearCookie);
     }
 
     const capacity = (await statusRes.json()) as CapacityStatus;
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
           clearCookie
         );
       }
-      return json({ error: response.statusText }, { status: response.status }, clearCookie);
+      return json({ error: "Gateway request failed." }, { status: response.status }, clearCookie);
     }
 
     const data = await response.json();
@@ -90,10 +90,10 @@ export async function GET(req: NextRequest) {
       clearCookie
     );
   } catch (error: unknown) {
+    console.error("Model listing failed:", error);
     if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
       return json({ error: "OFFLINE", message: "DGX Spark gateway connection timed out." }, { status: 200 });
     }
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    return json({ error: "OFFLINE", message: errorMsg }, { status: 200 });
+    return json({ error: "OFFLINE", message: "DGX Spark gateway is currently unavailable." }, { status: 200 });
   }
 }

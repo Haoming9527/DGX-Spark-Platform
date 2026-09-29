@@ -4,16 +4,17 @@ import { prisma } from "../../../../lib/prisma";
 import { hashPassword, generateToken, applySessionCookie } from "../../../../lib/auth";
 import { loadAccount, publicUser } from "../../../../lib/account";
 import { clientKey, takeRateLimit } from "../../../../lib/rateLimit";
+import { apiFailure, readJsonBody } from "../../../../lib/apiRequest";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: NextRequest) {
   try {
-    if (!takeRateLimit(`signup:${clientKey(req)}`, { limit: 5, windowMs: 15 * 60 * 1000 })) {
+    if (!await takeRateLimit(`signup:${clientKey(req)}`, { limit: 5, windowMs: 15 * 60 * 1000 })) {
       return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
     }
 
-    const body = await req.json();
+    const body = await readJsonBody(req);
     const { username, email, password, referralCode } = body;
 
     if (!username || !email || !password || !referralCode) {
@@ -110,8 +111,6 @@ export async function POST(req: NextRequest) {
     applySessionCookie(response, token);
     return response;
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    console.error("Signup error:", error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "Signup error:");
   }
 }

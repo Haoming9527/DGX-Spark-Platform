@@ -2,8 +2,10 @@ package ai
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
+	"strings"
 )
 
 func (s *Server) routes() http.Handler {
@@ -11,19 +13,22 @@ func (s *Server) routes() http.Handler {
 	chatServiceKey, adminServiceKey := s.config.ChatKey, s.config.AdminKey
 	promptStore := loadSystemPromptStore(s.config.PromptFile)
 	proxy := newOllaProxy(ollaURL)
-	mux := http.NewServeMux()
-	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := authorizedRequest(w, r, pool, chatServiceKey, adminServiceKey); !ok {
-			return
-		}
-		writeCapacityStatus(w, ollaURL)
-	})
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ident, ok := authorizedRequest(w, r, pool, chatServiceKey, adminServiceKey)
 		if !ok {
 			return
 		}
-		// Skip inference's allowlist fetch to avoid fetching the catalog twice.
+		r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
+		r.URL.RawPath = ""
+		if r.URL.Path == "/status" {
+			if r.Method != http.MethodGet {
+				w.Header().Set("Allow", "GET")
+				writeOpenAIError(w, http.StatusMethodNotAllowed, "Method not allowed.", "invalid_request_error", nil)
+				return
+			}
+			writeCapacityStatus(w, ollaURL)
+			return
+		}
 		if kind, listing := liveModelListKind(r); listing {
 			admin := ident.role == "admin"
 			restricted, available := loadRestricted(r.Context(), pool)
@@ -38,79 +43,76 @@ func (s *Server) routes() http.Handler {
 			}
 			return
 		}
-		// Hold admission through request preparation and the complete response stream.
-		if _, listing := liveModelListKind(r); !listing {
-			release, admitted := s.config.Admission.Enter()
-			if !admitted {
-				_, reason := s.config.Admission.Snapshot()
-				if reason == "" {
-					reason = "Spark is temporarily unavailable. Please try again."
-				}
-				writeOpenAIError(w, http.StatusServiceUnavailable, reason, "server_error", nil)
-				return
+		if !inferencePath(r.URL.Path) {
+			writeOpenAIError(w, http.StatusNotFound, "Endpoint not found.", "invalid_request_error", nil)
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			writeOpenAIError(w, http.StatusMethodNotAllowed, "Method not allowed.", "invalid_request_error", nil)
+			return
+		}
+		release, admitted := s.config.Admission.Enter()
+		if !admitted {
+			_, reason := s.config.Admission.Snapshot()
+			if reason == "" {
+				reason = "Spark is temporarily unavailable. Please try again."
 			}
-			defer release()
+			writeOpenAIError(w, http.StatusServiceUnavailable, reason, "server_error", nil)
+			return
+		}
+		defer release()
+		requestedModel, err := readRequestModel(w, r)
+		if err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				writeOpenAIError(w, http.StatusRequestEntityTooLarge, "Request body exceeds 48 MiB.", "invalid_request_error", nil)
+			} else {
+				writeOpenAIError(w, http.StatusBadRequest, "Invalid request body: "+err.Error(), "invalid_request_error", nil)
+			}
+			return
 		}
 		admin := ident.role == "admin"
-		requestedModel := peekRequestModel(r)
 		gate := loadGate(r.Context(), pool, ollaURL, admin)
 		if gate.databaseUnavailable {
 			writeOpenAIError(w, http.StatusServiceUnavailable, "Model access service unavailable.", "server_error", nil)
 			return
 		}
 		if gate.failClosed {
-			if kind, ok := liveModelListKind(r); ok {
-				if admin {
-					writeLiveModelList(w, ollaURL, kind, map[string]struct{}{}, true)
-					return
-				}
-				w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-				if kind == "openai" {
-					writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": []any{}})
-					return
-				}
-				writeJSON(w, http.StatusOK, ollamaTagsResponse{Models: []map[string]any{}})
-				return
-			}
 			writeLocalModelNotFound(w)
 			return
 		}
-
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		usageModel := ""
-		if kind, ok := liveModelListKind(r); ok {
-			writeLiveModelList(rec, ollaURL, kind, gate.restricted, admin)
+		if !modelOnAllowlist(requestedModel, gate.live, gate.restricted, admin) {
+			writeLocalModelNotFound(rec)
 		} else {
-			restrictedHit := requestedModel != "" && isRestrictedName(requestedModel, gate.restricted)
-			allowed := requestedModel != "" && modelOnAllowlist(requestedModel, gate.live, gate.restricted, admin)
-			if !allowed {
-				writeLocalModelNotFound(rec)
-			} else {
-				usageModel = requestedModel
-				isChat := shouldInjectSystemPrompt(r)
-				if isChat && !restrictedHit {
+			usageModel = requestedModel
+			if shouldInjectSystemPrompt(r) {
+				if !isRestrictedName(requestedModel, gate.restricted) {
 					if err := injectSystemPrompt(r, promptStore.get()); err != nil {
 						log.Printf("system prompt inject failed: %v", err)
 						writeOpenAIError(rec, http.StatusBadRequest, "Invalid request body.", "invalid_request_error", nil)
-						isChat = false
 						r = nil
 					}
 				}
-				if r != nil && isChat {
+				if r != nil {
 					prepared, err := prepareChatPayload(r)
+					if err == nil {
+						prepared, err = prepareStructuredOutput(prepared)
+					}
 					if err != nil {
 						writeOpenAIError(rec, http.StatusBadRequest, err.Error(), "invalid_request_error", nil)
 					} else {
-						r = prepared
-						prepared, err = prepareStructuredOutput(r)
-						if err != nil {
-							writeOpenAIError(rec, http.StatusBadRequest, err.Error(), "invalid_request_error", nil)
-						} else {
-							proxy.ServeHTTP(rec, prepared)
-						}
+						proxy.ServeHTTP(rec, prepared)
 					}
-				} else if r != nil {
-					proxy.ServeHTTP(rec, r)
+				}
+			} else {
+				prepared, err := prepareGenerationImages(r)
+				if err != nil {
+					writeOpenAIError(rec, http.StatusBadRequest, err.Error(), "invalid_request_error", nil)
+				} else {
+					proxy.ServeHTTP(rec, prepared)
 				}
 			}
 		}
@@ -118,6 +120,4 @@ func (s *Server) routes() http.Handler {
 			go logUsage(context.Background(), pool, ident.keyID, rec.status, usageModel)
 		}
 	})
-
-	return mux
 }

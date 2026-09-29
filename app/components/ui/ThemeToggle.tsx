@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import { Moon, Sun } from "lucide-react";
 
 export type ThemeMode = "light" | "dark";
@@ -22,24 +22,40 @@ function applyTheme(mode: ThemeMode) {
 
 function readInitialTheme(): ThemeMode {
   if (typeof window === "undefined") return "light";
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored === "light" || stored === "dark") return stored;
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored === "light" || stored === "dark") return stored;
+  } catch {}
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<ThemeMode>("light");
+function themeSnapshot(): ThemeMode {
+  const current = document.documentElement.getAttribute("data-theme");
+  return current === "light" || current === "dark" ? current : readInitialTheme();
+}
 
-  useEffect(() => {
-    const initial = readInitialTheme();
-    setThemeState(initial);
-    applyTheme(initial);
-  }, []);
+function subscribeTheme(notify: () => void) {
+  if (!document.documentElement.hasAttribute("data-theme")) applyTheme(readInitialTheme());
+  const syncStorage = (event: StorageEvent) => {
+    if (event.key !== STORAGE_KEY && event.key !== null) return;
+    applyTheme(readInitialTheme());
+    notify();
+  };
+  window.addEventListener("storage", syncStorage);
+  window.addEventListener("dgx-theme-change", notify);
+  return () => {
+    window.removeEventListener("storage", syncStorage);
+    window.removeEventListener("dgx-theme-change", notify);
+  };
+}
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const theme = useSyncExternalStore<ThemeMode>(subscribeTheme, themeSnapshot, () => "light");
 
   const setTheme = useCallback((mode: ThemeMode) => {
-    setThemeState(mode);
     applyTheme(mode);
-    window.localStorage.setItem(STORAGE_KEY, mode);
+    try { window.localStorage.setItem(STORAGE_KEY, mode); } catch {}
+    window.dispatchEvent(new Event("dgx-theme-change"));
   }, []);
 
   const toggleTheme = useCallback(() => {

@@ -1,3 +1,4 @@
+import { apiFailure, readJsonBody } from "@/lib/apiRequest";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdminRequest } from "@/lib/requireAdminRequest";
@@ -41,8 +42,7 @@ export async function GET(req: NextRequest) {
       restricted: restricted.map((r) => r.modelName),
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "admin/models request failed:");
   }
 }
 
@@ -51,7 +51,7 @@ export async function PUT(req: NextRequest) {
     const gate = await requireAdminRequest(req);
     if (gate.error) return gate.error;
 
-    const body = await req.json();
+    const body = await readJsonBody(req);
     const rawName = typeof body.modelName === "string" ? body.modelName : "";
     const modelName = normalizeModel(rawName);
     if (!modelName || modelName.length > 256) {
@@ -73,7 +73,6 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json({ modelName, restricted: body.restricted });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "admin/models request failed:");
   }
 }

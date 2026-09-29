@@ -4,6 +4,7 @@ import { inferenceKeyForAccount } from "../../../lib/inferenceKey";
 import { loadOptionalAccount } from "../../../lib/requireAccount";
 import { clearSessionCookie } from "../../../lib/auth";
 import { clientKey, takeRateLimit } from "../../../lib/rateLimit";
+import { apiFailure, readJsonBody } from "../../../lib/apiRequest";
 
 export const dynamic = "force-dynamic";
 
@@ -21,14 +22,14 @@ export async function POST(req: NextRequest) {
     const account = optional.account;
     const ip = clientKey(req);
     const overLimit = account
-      ? !takeRateLimit(`chat:${account.id}`, { limit: 30, windowMs: 60_000 })
-      : !takeRateLimit(`chat-anon:${ip}`, { limit: 5, windowMs: 60_000 }) ||
-        !takeRateLimit(`chat-anon-hour:${ip}`, { limit: 15, windowMs: 60 * 60 * 1000 });
+      ? !await takeRateLimit(`chat:${account.id}`, { limit: 30, windowMs: 60_000 })
+      : !await takeRateLimit(`chat-anon:${ip}`, { limit: 5, windowMs: 60_000 }) ||
+        !await takeRateLimit(`chat-anon-hour:${ip}`, { limit: 15, windowMs: 60 * 60 * 1000 });
     if (overLimit) {
       return reply(NextResponse.json({ error: "Too many requests." }, { status: 429 }), clearCookie);
     }
 
-    const { messages, model, useReasoning } = await req.json();
+    const { messages, model, useReasoning } = await readJsonBody(req, 48 * 1024 * 1024);
     const { base, apiKey } = inferenceKeyForAccount(account);
 
     const payload: Record<string, unknown> = {
@@ -36,8 +37,8 @@ export async function POST(req: NextRequest) {
       messages,
       stream: true,
     };
-    if (useReasoning === true) {
-      payload.think = true;
+    if (typeof useReasoning === "boolean" && !/(?:^|\/)gpt[-_]?oss(?:[:/-]|$)/i.test(String(payload.model))) {
+      payload.think = useReasoning;
     }
 
     const response = await fetch(`${base}/olla/ollama/api/chat`, {
@@ -133,14 +134,6 @@ export async function POST(req: NextRequest) {
       clearCookie
     );
   } catch (error: unknown) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error("API Route Error:", errorMsg);
-    return reply(
-      new Response(JSON.stringify({ error: "UPSTREAM", message: "The model request failed." }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }),
-      clearCookie
-    );
+    return reply(apiFailure(error, "Chat request failed:"), clearCookie);
   }
 }

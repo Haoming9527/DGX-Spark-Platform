@@ -67,12 +67,6 @@ function groupIdForSection(sectionId: string): NavGroupId | null {
   return null;
 }
 
-function initialSectionId(): string {
-  if (typeof window === "undefined") return "overview";
-  const hash = window.location.hash.replace(/^#/, "");
-  return (allSectionIds as readonly string[]).includes(hash) ? hash : "overview";
-}
-
 const chatSnippets = {
   Python: `from openai import OpenAI
 
@@ -511,10 +505,6 @@ export function DocsView() {
   const activeGroup = groupIdForSection(activeSection);
 
   useEffect(() => {
-    setActiveSection(initialSectionId());
-  }, []);
-
-  useEffect(() => {
     const nodes = allSectionIds
       .map((id) => document.getElementById(id))
       .filter((node): node is HTMLElement => Boolean(node));
@@ -541,6 +531,8 @@ export function DocsView() {
         }
         if (bestId) {
           setActiveSection(bestId);
+          const group = groupIdForSection(bestId);
+          setPeekGroup((current) => current === group ? null : current);
         }
       },
       { rootMargin: "-20% 0px -55% 0px", threshold: [0, 0.1, 0.25, 0.5, 1] },
@@ -591,10 +583,6 @@ export function DocsView() {
     });
     window.history.replaceState(null, "", `#${sectionId}`);
   };
-
-  useEffect(() => {
-    setPeekGroup((prev) => (prev && prev === activeGroup ? null : prev));
-  }, [activeGroup]);
 
   return (
     <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
