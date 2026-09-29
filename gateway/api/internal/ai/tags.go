@@ -23,9 +23,10 @@ const (
 )
 
 type capCacheEntry struct {
-	caps []string
-	at   time.Time
-	ok   bool
+	caps     []string
+	thinking json.RawMessage
+	at       time.Time
+	ok       bool
 }
 
 var capCache sync.Map
@@ -73,6 +74,9 @@ func writeLiveModelList(w http.ResponseWriter, ollaBase *url.URL, kind string, r
 			}
 			if caps := capabilitiesFromModel(m); len(caps) > 0 {
 				item["capabilities"] = caps
+			}
+			if thinking, ok := m["thinking"]; ok {
+				item["thinking"] = thinking
 			}
 			data = append(data, item)
 		}
@@ -170,7 +174,11 @@ func attachCapabilities(models []map[string]any, endpoints []ollaEndpoint) []map
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			models[i]["capabilities"] = lookupCapabilities(ep, name, tagged)
+			entry := lookupCapabilities(ep, name, tagged)
+			models[i]["capabilities"] = entry.caps
+			if len(entry.thinking) > 0 {
+				models[i]["thinking"] = entry.thinking
+			}
 		}(i, name, capabilitiesFromModel(models[i]))
 	}
 	wg.Wait()
@@ -189,7 +197,7 @@ func firstShowEndpoint(endpoints []ollaEndpoint) (ollaEndpoint, bool) {
 	return ollaEndpoint{}, false
 }
 
-func lookupCapabilities(ep ollaEndpoint, name string, tagged []string) []string {
+func lookupCapabilities(ep ollaEndpoint, name string, tagged []string) capCacheEntry {
 	if v, ok := capCache.Load(name); ok {
 		entry := v.(capCacheEntry)
 		ttl := capCacheTTL
@@ -197,27 +205,27 @@ func lookupCapabilities(ep ollaEndpoint, name string, tagged []string) []string 
 			ttl = capCacheFailTTL
 		}
 		if time.Since(entry.at) < ttl {
-			if entry.caps == nil {
-				return []string{}
-			}
-			return entry.caps
+			return entry
 		}
 	}
-	caps, err := fetchShowCapabilities(ep, name)
+	caps, thinking, err := fetchShowCapabilities(ep, name)
 	if err != nil {
 		if len(tagged) > 0 {
-			capCache.Store(name, capCacheEntry{caps: tagged, at: time.Now(), ok: true})
-			return tagged
+			entry := capCacheEntry{caps: tagged, at: time.Now(), ok: true}
+			capCache.Store(name, entry)
+			return entry
 		}
 		log.Printf("show %s: %v", name, err)
-		capCache.Store(name, capCacheEntry{caps: []string{}, at: time.Now(), ok: false})
-		return []string{}
+		entry := capCacheEntry{caps: []string{}, at: time.Now(), ok: false}
+		capCache.Store(name, entry)
+		return entry
 	}
 	if caps == nil {
 		caps = []string{}
 	}
-	capCache.Store(name, capCacheEntry{caps: caps, at: time.Now(), ok: true})
-	return caps
+	entry := capCacheEntry{caps: caps, thinking: thinking, at: time.Now(), ok: true}
+	capCache.Store(name, entry)
+	return entry
 }
 
 func capabilitiesFromModel(m map[string]any) []string {
@@ -246,19 +254,19 @@ func capabilitiesFromModel(m map[string]any) []string {
 	}
 }
 
-func fetchShowCapabilities(ep ollaEndpoint, name string) ([]string, error) {
+func fetchShowCapabilities(ep ollaEndpoint, name string) ([]string, json.RawMessage, error) {
 	base, err := url.Parse(ep.URL)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	body, err := json.Marshal(map[string]string{"model": name, "name": name})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	reqURL := base.ResolveReference(&url.URL{Path: "/api/show"})
 	req, err := http.NewRequest(http.MethodPost, reqURL.String(), bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if key := strings.TrimSpace(os.Getenv("SG_API_KEY")); key != "" {
@@ -267,23 +275,24 @@ func fetchShowCapabilities(ep ollaEndpoint, name string) ([]string, error) {
 	client := &http.Client{Timeout: capFetchTimeout}
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", ep.Name, err)
+		return nil, nil, fmt.Errorf("%s: %w", ep.Name, err)
 	}
 	defer res.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 8<<20))
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", ep.Name, err)
+		return nil, nil, fmt.Errorf("%s: %w", ep.Name, err)
 	}
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s: show status %d", ep.Name, res.StatusCode)
+		return nil, nil, fmt.Errorf("%s: show status %d", ep.Name, res.StatusCode)
 	}
 	var payload struct {
-		Capabilities []string `json:"capabilities"`
+		Capabilities []string        `json:"capabilities"`
+		Thinking     json.RawMessage `json:"thinking"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return nil, fmt.Errorf("%s: %w", ep.Name, err)
+		return nil, nil, fmt.Errorf("%s: %w", ep.Name, err)
 	}
-	return payload.Capabilities, nil
+	return payload.Capabilities, payload.Thinking, nil
 }
 
 func listHealthyOllamaEndpoints(ollaBase *url.URL) ([]ollaEndpoint, error) {

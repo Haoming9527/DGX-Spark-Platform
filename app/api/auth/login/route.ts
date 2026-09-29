@@ -3,6 +3,7 @@ import { prisma } from "../../../../lib/prisma";
 import { comparePassword, hashPassword, generateToken, getSession, applySessionCookie, clearSessionCookie } from "../../../../lib/auth";
 import { loadAccount, publicUser } from "../../../../lib/account";
 import { clientKey, takeRateLimit } from "../../../../lib/rateLimit";
+import { apiFailure, readJsonBody } from "../../../../lib/apiRequest";
 
 function sessionCookie(response: NextResponse, token: string) {
   applySessionCookie(response, token);
@@ -22,18 +23,17 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json({ authenticated: true, user: publicUser(account) }, { status: 200 });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "Session lookup failed:");
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    if (!takeRateLimit(`login:${clientKey(req)}`, { limit: 10, windowMs: 15 * 60 * 1000 })) {
+    if (!await takeRateLimit(`login:${clientKey(req)}`, { limit: 10, windowMs: 15 * 60 * 1000 })) {
       return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
     }
 
-    const { identifier, password } = await req.json();
+    const { identifier, password } = await readJsonBody(req);
 
     if (!identifier || !password) {
       return NextResponse.json(
@@ -50,6 +50,9 @@ export async function POST(req: NextRequest) {
     }
 
     const clean = identifier.trim();
+    if (!await takeRateLimit(`login-identity:${clean.toLowerCase()}`, { limit: 10, windowMs: 15 * 60 * 1000 })) {
+      return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
+    }
 
     const user = await prisma.user.findFirst({
       where: {
@@ -123,9 +126,7 @@ export async function POST(req: NextRequest) {
     sessionCookie(response, token);
     return response;
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    console.error("Login error:", error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "Login error:");
   }
 }
 

@@ -34,10 +34,7 @@ export function UsageOverview({ keys, keysLoading, onKeyClick }: UsageOverviewPr
   const keyIds = useMemo(() => keys.map((key) => key.id).join(","), [keys]);
 
   useEffect(() => {
-    if (keys.length === 0) {
-      setByModel([]);
-      return;
-    }
+    if (keys.length === 0) return;
 
     const controller = new AbortController();
     const timer = setTimeout(() => {
@@ -53,6 +50,7 @@ export function UsageOverview({ keys, keysLoading, onKeyClick }: UsageOverviewPr
         return res.json();
       })
       .then((data) => {
+        if (controller.signal.aborted) return;
         const nextUsage: Record<string, UsageSummary> = {};
         for (const row of data.usage || []) {
           nextUsage[row.id] = {
@@ -252,7 +250,7 @@ export function UsageOverview({ keys, keysLoading, onKeyClick }: UsageOverviewPr
           </div>
         )}
       </div>
-      {byModel.length > 0 && (
+      {keys.length > 0 && byModel.length > 0 && (
         <div className="sticker rounded-xl sm:rounded-2xl p-4 sm:p-6 space-y-3">
           <div className="text-sm font-bold">By model</div>
           <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">

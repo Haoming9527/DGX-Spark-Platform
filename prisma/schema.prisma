@@ -61,3 +61,12 @@ model RestrictedModel {
 
   @@map("restricted_models")
 }
+
+model RateLimitBucket {
+  keyHash   String   @id @map("key_hash") @db.VarChar(64)
+  requests  Int
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@index([expiresAt], map: "idx_rate_limit_buckets_expires_at")
+  @@map("rate_limit_buckets")
+}

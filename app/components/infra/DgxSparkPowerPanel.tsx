@@ -66,7 +66,7 @@ export function DgxSparkPowerPanel() {
     <section ref={section} tabIndex={-1} className="sticker max-w-3xl px-5 py-6 sm:px-6" aria-labelledby={`${id}-title`} aria-busy={loading}>
       <h2 id={`${id}-title`} className="flex items-center gap-2.5 text-lg font-bold">
         <Cpu className="h-5 w-5 shrink-0" aria-hidden="true" />
-        DGX Spark — Singapore
+        DGX Spark - Singapore
       </h2>
       <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
         <div className="flex items-baseline gap-2">

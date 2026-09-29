@@ -5,7 +5,6 @@ import {
   requireInferenceGateway,
 } from "../../../lib/inferenceGateway";
 
-export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 function gatewayHostFromBase(base: string | null): string | null {
@@ -13,7 +12,7 @@ function gatewayHostFromBase(base: string | null): string | null {
   try {
     return new URL(base).host;
   } catch {
-    return base.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    return null;
   }
 }
 
@@ -44,7 +43,7 @@ export async function GET() {
           { status: 200 }
         );
       }
-      return NextResponse.json({ error: response.statusText }, { status: response.status });
+      return NextResponse.json({ error: "Gateway request failed." }, { status: response.status });
     }
 
     const capacity = await response.json();
@@ -55,11 +54,11 @@ export async function GET() {
       error: capacity.status === "sleeping" ? "SLEEPING" : undefined,
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    console.error("Gateway status failed:", error);
     return NextResponse.json(
       {
         error: "OFFLINE",
-        message,
+        message: "Inference gateway is currently unavailable.",
         status: "offline",
         gateway: "offline",
         gateway_host: gatewayHost,

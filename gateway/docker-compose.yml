@@ -7,7 +7,7 @@ services:
       - path: .env
         required: false
     ports:
-      - "${OLLA_PORT:-40114}:40114"
+      - "127.0.0.1:${OLLA_PORT:-40114}:40114"
     environment:
       SG_API_ENDPOINT: ${SG_API_ENDPOINT}
       SG_API_KEY: ${SG_API_KEY}

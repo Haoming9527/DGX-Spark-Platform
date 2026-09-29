@@ -39,7 +39,7 @@ export function ModelBrandMark({ modelId, size = 16, className = "" }: ModelBran
   if (family.src) {
     return (
       <span
-        className={`inline-flex shrink-0 items-center justify-center ${family.ink ? "text-foreground" : ""} ${className}`}
+        className={`inline-flex shrink-0 items-center justify-center ${family.ink ? "model-logo-ink text-foreground" : ""} ${className}`}
         style={{ width: size, height: size }}
       >
         <Image

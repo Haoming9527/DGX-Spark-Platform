@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useId } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Send, StopCircle, BrainCircuit, Mic, MicOff, ImagePlus, Plus, X, ChevronDown } from "lucide-react";
 import { ChatImage } from "../types/chat";
+import Image from "next/image";
+import type { ThinkingMode } from "@/lib/modelThinking";
 
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -42,6 +44,7 @@ interface ChatInputProps {
   useReasoning: boolean;
   setUseReasoning: (val: boolean) => void;
   canThink: boolean;
+  thinkingMode?: ThinkingMode;
   canSee: boolean;
   pendingImages: ChatImage[];
   setPendingImages: (val: ChatImage[] | ((prev: ChatImage[]) => ChatImage[])) => void;
@@ -64,6 +67,7 @@ export function ChatInput({
   useReasoning,
   setUseReasoning,
   canThink,
+  thinkingMode,
   canSee,
   pendingImages,
   setPendingImages,
@@ -346,7 +350,7 @@ export function ChatInput({
             <div className="flex flex-wrap gap-2 px-1.5 pt-1">
               {pendingImages.map((img) => (
                 <div key={img.id} className="relative h-14 w-14 overflow-hidden rounded-xl ring-1 ring-border">
-                  <img src={img.dataUrl} alt={img.name} className="h-full w-full object-cover" />
+                  <Image src={img.dataUrl} alt={img.name} fill unoptimized sizes="56px" className="object-cover" />
                   <button
                     type="button"
                     onClick={() => setPendingImages((prev) => prev.filter((p) => p.id !== img.id))}
@@ -367,9 +371,8 @@ export function ChatInput({
                 setInput(e.target.value);
               }
             }}
-            onPaste={onPaste}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) {
                 e.preventDefault();
                 handleSubmit(e);
               }
@@ -471,17 +474,19 @@ export function ChatInput({
                       type="button"
                       disabled={!canThink}
                       onClick={() => canThink && setUseReasoning(!useReasoning)}
-                      aria-pressed={canThink && useReasoning}
+                      aria-pressed={thinkingMode === "required" || canThink && useReasoning}
                       aria-disabled={!canThink}
-                      aria-label="Thinking"
+                      aria-label={thinkingMode === "required" ? "Thinking (always on)" : thinkingMode === "levels" ? "Thinking (model default)" : "Thinking"}
                       className={`${chip} ${
-                        !canThink
+                        thinkingMode === "required"
+                          ? `${chipThinkOn} cursor-default`
+                          : !canThink
                           ? "cursor-not-allowed opacity-35 hover:brightness-100 hover:text-muted"
                           : useReasoning
                             ? chipThinkOn
                             : ""
                       }`}
-                      title={canThink ? "Toggle Reasoning Mode" : "This model does not support thinking"}
+                      title={thinkingMode === "required" ? "This model always uses thinking" : thinkingMode === "levels" ? "This model controls thinking through reasoning levels" : canThink ? "Toggle Reasoning Mode" : "This model does not support thinking"}
                     >
                       <BrainCircuit className="h-3.5 w-3.5" strokeWidth={2} />
                       <span className="hidden @[420px]/composer:inline">Thinking</span>

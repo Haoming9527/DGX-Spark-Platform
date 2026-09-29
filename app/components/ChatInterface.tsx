@@ -11,6 +11,7 @@ import Link from "next/link";
 import { LogoMark } from "./ui/LogoMark";
 import { splitAssistantText } from "../../lib/splitThinking";
 import { useChatStickScroll } from "./useChatStickScroll";
+import { thinkingMode } from "@/lib/modelThinking";
 
 const MessageBubble = dynamic(() =>
   import("./MessageBubble").then((m) => m.MessageBubble),
@@ -142,7 +143,7 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
       if (data.models && Array.isArray(data.models)) {
         const loadedModels: ModelItem[] = data.models
           .filter((m: { name: string }) => !m.name.toLowerCase().includes("embed"))
-          .map((m: { name: string; capabilities?: unknown; details?: { parameter_size?: string } }) => {
+          .map((m: { name: string; capabilities?: unknown; thinking?: unknown; details?: { parameter_size?: string } }) => {
             const caps = Array.isArray(m.capabilities)
               ? m.capabilities.map((c) => String(c).toLowerCase())
               : [];
@@ -152,6 +153,7 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
               parameterSize: m.details?.parameter_size ?? null,
               capabilities: caps,
               thinking: caps.includes("thinking"),
+              thinkingMode: thinkingMode(m.name, caps, m.thinking),
               vision: caps.includes("vision"),
               tools: caps.includes("tools"),
               embedding: caps.includes("embedding"),
@@ -195,7 +197,8 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
   }, [user?.role]);
 
   const selectedCaps = models.find((m) => m.id === selectedModel);
-  const canThink = Boolean(selectedCaps?.thinking);
+  const selectedThinkingMode = selectedCaps?.thinkingMode ?? "none";
+  const canThink = selectedThinkingMode === "toggle";
   const canSee = Boolean(selectedCaps?.vision);
 
   useEffect(() => {
@@ -235,7 +238,7 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: selectedModel,
-          useReasoning: canThink && useReasoning,
+          useReasoning: canThink ? useReasoning : undefined,
           messages: toChatHistory(history, canSee),
         }),
         signal: controller.signal,
@@ -317,6 +320,8 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
       let streamedContent = "";
       let streamedThinking = "";
       let lineBuffer = "";
+      let streamFailed = false;
+      let streamCompleted = false;
 
       const updateAssistant = (partial: Partial<Message>) => {
         setMessages((prev) =>
@@ -336,9 +341,9 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
         const rIsThinking = parsed.isThinking || (rThought.length > 0 && rContent.length === 0);
 
         updateAssistant({
-          content: rContent,
+          content: streamFailed ? [rContent, "Response interrupted. Try again."].filter(Boolean).join("\n\n") : rContent,
           thoughtProcess: rThought,
-          isThinking: rIsThinking,
+          isThinking: !streamFailed && rIsThinking,
         });
       };
 
@@ -348,6 +353,32 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
           paintRaf = 0;
           flushDisplayFromBuffers();
         });
+      };
+
+      const readLine = (line: string) => {
+        if (!line.trim()) return;
+        try {
+          const data = JSON.parse(line);
+          if (data.error) {
+            streamFailed = true;
+            done = true;
+            return;
+          }
+          if (data.done === true) streamCompleted = true;
+          if (data.message?.thinking) streamedThinking += data.message.thinking;
+          if (data.message?.content) streamedContent += data.message.content;
+          applyDisplayFromBuffers();
+          if (data.done && data.eval_count && data.eval_duration) {
+            updateAssistant({
+              evalCount: data.eval_count,
+              evalDurationMs: Math.round(data.eval_duration / 1000000),
+              isThinking: false,
+            });
+          }
+        } catch {
+          streamFailed = true;
+          done = true;
+        }
       };
 
       while (!done && !controller.signal.aborted) {
@@ -362,29 +393,8 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
           lineBuffer = lines.pop() || "";
 
           for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (!trimmedLine) continue;
-            try {
-              const data = JSON.parse(trimmedLine);
-              const msg = data.message;
-              if (msg?.thinking) {
-                streamedThinking += msg.thinking;
-                applyDisplayFromBuffers();
-              }
-              if (msg?.content) {
-                streamedContent += msg.content;
-                applyDisplayFromBuffers();
-              }
-              if (data.done && data.eval_count && data.eval_duration) {
-                updateAssistant({
-                  evalCount: data.eval_count,
-                  evalDurationMs: Math.round(data.eval_duration / 1000000),
-                  isThinking: false,
-                });
-              }
-            } catch (err) {
-              console.warn("Failed to parse chunk:", trimmedLine, err);
-            }
+            readLine(line);
+            if (streamFailed) break;
           }
         }
       }
@@ -393,15 +403,11 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
         window.cancelAnimationFrame(paintRaf);
         paintRaf = 0;
       }
-      if (lineBuffer.trim()) {
-        try {
-          const data = JSON.parse(lineBuffer.trim());
-          if (data.message?.thinking) streamedThinking += data.message.thinking;
-          if (data.message?.content) streamedContent += data.message.content;
-        } catch {
-        }
-      }
+      if (!streamFailed) readLine(lineBuffer + decoder.decode());
+      if (!streamCompleted && !controller.signal.aborted) streamFailed = true;
       flushDisplayFromBuffers();
+      if (streamFailed) await reader.cancel().catch(() => {});
+      reader.releaseLock();
     } catch (error: unknown) {
       if (!controller.signal.aborted && error instanceof Error && error.name !== "AbortError") {
         console.error("Chat Error:", error);
@@ -569,6 +575,7 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
         useReasoning={useReasoning}
         setUseReasoning={setUseReasoning}
         canThink={canThink}
+        thinkingMode={selectedThinkingMode}
         canSee={canSee}
         pendingImages={pendingImages}
         setPendingImages={setPendingImages}

@@ -1,10 +1,7 @@
 package ai
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -57,33 +54,6 @@ func loadRestricted(ctx context.Context, pool *pgxpool.Pool) (map[string]struct{
 func isRestrictedName(name string, set map[string]struct{}) bool {
 	_, ok := set[normalizeModel(name)]
 	return ok
-}
-
-func peekRequestModel(r *http.Request) string {
-	if q := normalizeModel(r.URL.Query().Get("model")); q != "" {
-		return q
-	}
-	if r.Body == nil || r.Method == http.MethodGet || r.Method == http.MethodHead {
-		return ""
-	}
-	raw, err := io.ReadAll(io.LimitReader(r.Body, 32<<20))
-	_ = r.Body.Close()
-	r.Body = io.NopCloser(bytes.NewReader(raw))
-	if err != nil || len(bytes.TrimSpace(raw)) == 0 {
-		return ""
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return ""
-	}
-	for _, key := range []string{"model", "name"} {
-		if s, ok := payload[key].(string); ok {
-			if n := normalizeModel(s); n != "" {
-				return n
-			}
-		}
-	}
-	return ""
 }
 
 func filterModelsByAllowlist(models []map[string]any, restricted map[string]struct{}, admin bool) []map[string]any {

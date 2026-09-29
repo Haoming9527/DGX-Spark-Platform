@@ -1,3 +1,4 @@
+import { apiFailure, readJsonBody } from "@/lib/apiRequest";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdminRequest } from "@/lib/requireAdminRequest";
@@ -45,8 +46,7 @@ export async function GET(req: NextRequest) {
       })),
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "admin/users request failed:");
   }
 }
 
@@ -55,7 +55,7 @@ export async function PATCH(req: NextRequest) {
     const gate = await requireAdminRequest(req);
     if (gate.error) return gate.error;
 
-    const body = await req.json();
+    const body = await readJsonBody(req);
     const id = typeof body.id === "string" ? body.id : "";
     if (!UUID_REGEX.test(id)) {
       return NextResponse.json({ error: "Invalid user id." }, { status: 400 });
@@ -113,8 +113,7 @@ export async function PATCH(req: NextRequest) {
       },
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "admin/users request failed:");
   }
 }
 
@@ -135,7 +134,6 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "admin/users request failed:");
   }
 }

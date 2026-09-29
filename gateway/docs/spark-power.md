@@ -6,7 +6,7 @@ Spark shutdown over SSH before considering relay cutoff. The Pi meter remains
 read-only and uses its own topic and MQTT connection.
 
 Admins see the Spark card under **Admin → Infrastructure**. Operators see the
-same card on **Spark Power**, in addition to normal user features. Operators do
+same card on **Power** (`/power`), in addition to normal user features. Operators do
 not gain access to Pi readings or other admin pages. Authentication checks the
 account's current role and disabled status on every request.
 

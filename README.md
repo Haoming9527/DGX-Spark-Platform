@@ -47,7 +47,7 @@ flowchart TD
 | **Olla** | Model discovery, health checks, and routing to configured inference servers |
 | **Ollama on Spark** | Model execution and inference |
 | **Mosquitto on Pi** | Communication with the Tasmota plugs |
-| **Neon PostgreSQL** | Accounts, roles, API keys, model restrictions, and inference usage |
+| **Neon PostgreSQL** | Accounts, roles, API keys, model restrictions, inference usage, and shared rate limits |
 | **Cloudflare Tunnel** | Public HTTPS access to the Pi gateway |
 
 Ollama already exposes OpenAI-compatible endpoints. This project's gateway adds shared authentication, personal API keys, access policies, usage tracking, routing through Olla, and infrastructure controls around those endpoints.
@@ -63,7 +63,7 @@ The Go code separates inference in `gateway/api/internal/ai/` from infrastructur
 | Pi infrastructure readings | — | — | ✓ |
 | User and model administration | — | — | ✓ |
 
-Operators use **Spark Power** (`/spark-power`). Admins can also control the Spark under **Admin → Infrastructure** (`/admin/infra`). Server-side checks reload the account's role and disabled status for each infrastructure request.
+Operators use **Power** (`/power`). Admins can also control the Spark under **Admin → Infrastructure** (`/admin/infra`). Server-side checks reload the account's role and disabled status for each infrastructure request.
 
 New accounts receive the `user` role. For a new installation, create your account through signup, then promote that specific account to `admin` in the database. Subsequent role assignments are available in **Admin → Users**.
 
@@ -118,6 +118,8 @@ For a **new, empty database**, run [schema.sql](schema.sql) in Neon's SQL editor
 
 For an **existing installation adding operators**, apply [the operator-role migration](sql/migrations/20260928_operator_role.sql) before assigning the new role. Updating application code alone does not change PostgreSQL's existing role constraint.
 
+Existing installations must also apply [the rate-limit migration](sql/migrations/20260929_rate_limit_buckets.sql) before deploying the updated frontend. Login, signup, and chat use shared database counters; if the rate-limit store is unavailable, those requests fail closed. The migration adds a table and index without changing accounts or passwords.
+
 An error containing `23514` and `users_role_check` while assigning `operator` means that constraint still needs updating. Do not reset an existing database to resolve it.
 
 ### 3. Start the gateway on the Pi
@@ -134,7 +136,7 @@ The health endpoint should return `ok`. It confirms the gateway process is runni
 | Service | Default address |
 | --- | --- |
 | Go API | `http://127.0.0.1:50080` on the Pi |
-| Olla | `http://olla:40114` within Compose; host port `40114` |
+| Olla | `http://olla:40114` within Compose; `http://127.0.0.1:40114` on the Pi |
 
 The API host port comes from `API_PORT`; the API container listens on `8080`. Configure `INFRA_READ_KEY` and the MQTT settings even when setting up the AI side first. Spark-specific configuration can be completed later without blocking Pi readings.
 
@@ -193,6 +195,10 @@ Keep the matching service credentials configured and redeploy the frontend. Veri
 curl --fail https://api.dgxspark.dev/healthz
 ```
 
+Publish only the authenticated Go gateway. Olla's host port is bound to localhost; its upstream API key does not authenticate incoming clients. Do not point a public tunnel or port forward at Olla directly.
+
+Vercel supplies the trusted client IP automatically. When self-hosting Next.js behind a reverse proxy, set `TRUSTED_CLIENT_IP_HEADER` only to a header that the proxy overwrites with the client's IP, and prevent direct access to the origin. Otherwise leave it empty: anonymous requests share one conservative rate-limit bucket. Rate-limit identifiers are hashed and counters expire in Neon.
+
 ## Spark power control
 
 The Spark controller uses a dedicated MQTT topic and a restricted SSH key. Power-on restores the plug's AC supply; Spark's UEFI **Auto Boot** setting must allow it to start when power returns.
@@ -226,6 +232,8 @@ curl https://api.dgxspark.dev/v1/models \
 
 Endpoint compatibility depends on the gateway and upstream model capabilities. See the application's `/documentation` page for usage examples.
 
+Image inputs accept base64/data URLs and direct public HTTP(S) image URLs on ports 80/443. Private-network destinations and redirects are rejected. PNG, JPEG, WebP, and GIF inputs are limited to 8 MiB and 40 megapixels each, with at most 32 images and 32 MiB of decoded image data per request. JSON requests are limited to 48 MiB. Model permissions apply to the JSON body sent upstream; conflicting query/body model names are rejected. The public gateway forwards supported inference routes only, not upstream administration routes.
+
 ## Repository layout
 
 ```text
@@ -258,6 +266,8 @@ docker compose logs --tail=50 api
 ```
 
 Preserve existing `.env` files and add new settings from the examples as needed. After changing gateway environment values, use `docker compose up -d api` to recreate the container; `docker compose restart` does not load those changes. Deploy frontend updates separately and apply any required database migrations.
+
+For this security update, apply `sql/migrations/20260929_rate_limit_buckets.sql` in Neon's SQL editor first, then rebuild both Compose services using the command above and redeploy the frontend. For a locally hosted frontend, run `npm ci`, `npm run build`, and restart its process. Existing Spark SSH keys and helpers do not need reinstalling for this update.
 
 For development, `npm run lint` checks the frontend. With a compatible local Go toolchain, run `go vet ./...` and `go build .` from `gateway/api/`.
 

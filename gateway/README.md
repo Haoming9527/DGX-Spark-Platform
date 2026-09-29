@@ -77,6 +77,12 @@ boot. The API binds to Pi loopback port 50080 by default; use the existing tunne
 or an SSH port forward to access it remotely. MQTT uses the Pi's LAN address from
 inside Docker; `localhost` there would refer to the Go container.
 
+Olla also binds its published port to loopback (`127.0.0.1:40114`). The Go API
+uses `http://olla:40114` on the Docker network. Keep public tunnels pointed at
+the Go API: direct access to Olla bypasses account permissions and inference
+shutdown draining. Recreate both services with `docker compose up -d --build`
+when updating the port binding.
+
 ## Connect the frontend
 
 The panel is at `/admin/infra`, linked from the existing Admin navigation. It

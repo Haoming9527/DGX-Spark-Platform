@@ -1,3 +1,4 @@
+import { apiFailure } from "@/lib/apiRequest";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
 import { requireActiveAccount } from "../../../../lib/requireAccount";
@@ -73,8 +74,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ usage, byModel });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    console.error("GET api_keys/usage-summary error:", error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "apikeys/usage-summary request failed:");
   }
 }

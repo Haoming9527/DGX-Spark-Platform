@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "../../../lib/prisma";
 import { requireActiveAccount } from "../../../lib/requireAccount";
+import { ApiRequestError, apiFailure, readJsonBody } from "../../../lib/apiRequest";
 
 function hashKey(rawKey: string): string {
   return crypto.createHash("sha256").update(rawKey).digest("hex");
@@ -42,9 +43,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ keys });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    console.error("GET api_keys error:", error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "apikeys request failed:");
   }
 }
 
@@ -53,7 +52,7 @@ export async function POST(req: NextRequest) {
     const gate = await requireActiveAccount(req);
     if (gate.error) return gate.error;
 
-    const { name } = await req.json();
+    const { name } = await readJsonBody(req);
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Key name is required." }, { status: 400 });
     }
@@ -65,34 +64,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const currentCount = await prisma.apiKey.count({
-      where: { userId: gate.account.id },
-    });
-    if (currentCount >= 20) {
-      return NextResponse.json(
-        { error: "Maximum of 20 API keys reached. Please revoke an existing key first." },
-        { status: 400 }
-      );
-    }
-
     const rawKey = `dgx_sk_${crypto.randomBytes(24).toString("hex")}`;
     const keyHash = hashKey(rawKey);
     const keyPrefix = rawKey.substring(0, 20);
 
-    const key = await prisma.apiKey.create({
-      data: {
-        userId: gate.account.id,
-        keyHash,
-        keyPrefix,
-        name: safeName,
-      },
-      select: {
-        id: true,
-        name: true,
-        keyPrefix: true,
-        createdAt: true,
-        lastUsedAt: true,
-      },
+    const key = await prisma.$transaction(async (tx) => {
+      const accounts = await tx.$queryRaw<{ disabled: boolean }[]>`
+        SELECT (disabled_at IS NOT NULL) AS disabled FROM users
+        WHERE id = ${gate.account.id}::uuid FOR UPDATE
+      `;
+      if (!accounts[0] || accounts[0].disabled) throw new ApiRequestError(401, "Unauthorized");
+      const currentCount = await tx.apiKey.count({ where: { userId: gate.account.id } });
+      if (currentCount >= 20) {
+        throw new ApiRequestError(400, "Maximum of 20 API keys reached. Please revoke an existing key first.");
+      }
+      return tx.apiKey.create({
+        data: { userId: gate.account.id, keyHash, keyPrefix, name: safeName },
+        select: { id: true, name: true, keyPrefix: true, createdAt: true, lastUsedAt: true },
+      });
     });
 
     return NextResponse.json({
@@ -109,9 +98,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    console.error("POST api_keys error:", error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "apikeys request failed:");
   }
 }
 
@@ -139,9 +126,7 @@ export async function DELETE(req: NextRequest) {
 
     return new NextResponse(null, { status: 204 });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    console.error("DELETE api_keys error:", error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "apikeys request failed:");
   }
 }
 
@@ -150,8 +135,8 @@ export async function PATCH(req: NextRequest) {
     const gate = await requireActiveAccount(req);
     if (gate.error) return gate.error;
 
-    const { id, name } = await req.json();
-    if (!id || !name || typeof name !== "string" || !name.trim()) {
+    const { id, name } = await readJsonBody(req);
+    if (typeof id !== "string" || !id || !name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Key ID and name are required." }, { status: 400 });
     }
 
@@ -181,8 +166,6 @@ export async function PATCH(req: NextRequest) {
       key: { id, name: safeName },
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal server error";
-    console.error("PATCH api_keys error:", error);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiFailure(error, "apikeys request failed:");
   }
 }

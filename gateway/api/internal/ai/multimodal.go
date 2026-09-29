@@ -4,23 +4,34 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
-	"net/url"
 	"path"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
-const maxInlineBytes = 8 << 20
+const (
+	maxInlineBytes = 8 << 20
+	maxImageBytes  = 32 << 20
+	maxImages      = 32
+)
 
 var errUnsupportedPart = errors.New("unsupported content part")
 
-var mediaHTTPClient = &http.Client{Timeout: 20 * time.Second}
+type mediaDecoder struct {
+	ctx    context.Context
+	images int
+	bytes  int
+}
 
 type visionCtxKey struct{}
 
@@ -35,6 +46,41 @@ func requestHasVision(r *http.Request) bool {
 
 func isOllamaNativeChat(p string) bool {
 	return p == "/olla/ollama/api/chat" || strings.HasSuffix(p, "/api/chat")
+}
+
+func prepareGenerationImages(r *http.Request) (*http.Request, error) {
+	if !strings.HasSuffix(r.URL.Path, "/api/generate") || r.Body == nil {
+		return r, nil
+	}
+	raw, err := io.ReadAll(r.Body)
+	_ = r.Body.Close()
+	if err != nil {
+		return r, err
+	}
+	var payload map[string]json.RawMessage
+	if json.Unmarshal(raw, &payload) != nil {
+		return r, errors.New("invalid generation request")
+	}
+	if value, ok := payload["images"]; ok {
+		var images any
+		if json.Unmarshal(value, &images) != nil {
+			return r, errors.New("invalid generation images")
+		}
+		decoder := &mediaDecoder{ctx: r.Context()}
+		images, _, err = decoder.existingImages(images)
+		if err != nil {
+			return r, err
+		}
+		payload["images"], _ = json.Marshal(images)
+	}
+	raw, err = json.Marshal(payload)
+	if err != nil {
+		return r, err
+	}
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	r.ContentLength = int64(len(raw))
+	r.Header.Set("Content-Length", fmt.Sprintf("%d", len(raw)))
+	return r, nil
 }
 
 func prepareChatPayload(r *http.Request) (*http.Request, error) {
@@ -67,7 +113,7 @@ func prepareChatPayload(r *http.Request) (*http.Request, error) {
 	}
 
 	native := isOllamaNativeChat(r.URL.Path)
-	normalized, sawVision, err := normalizeMessages(msgs, native)
+	normalized, sawVision, err := normalizeMessages(r.Context(), msgs, native)
 	if err != nil {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		r.ContentLength = int64(len(body))
@@ -90,9 +136,10 @@ func prepareChatPayload(r *http.Request) (*http.Request, error) {
 	return r, nil
 }
 
-func normalizeMessages(msgs []any, native bool) ([]any, bool, error) {
+func normalizeMessages(ctx context.Context, msgs []any, native bool) ([]any, bool, error) {
 	out := make([]any, 0, len(msgs))
 	sawVision := false
+	decoder := &mediaDecoder{ctx: ctx}
 	for _, raw := range msgs {
 		m, ok := raw.(map[string]any)
 		if !ok {
@@ -100,11 +147,15 @@ func normalizeMessages(msgs []any, native bool) ([]any, bool, error) {
 			continue
 		}
 		nm := copyMap(m)
-		text, images, changed, err := extractMedia(nm["content"])
+		text, images, changed, err := decoder.extractMedia(nm["content"])
 		if err != nil {
 			return nil, false, err
 		}
-		if extra, ok := existingImages(nm["images"]); ok {
+		extra, hasImages, err := decoder.existingImages(nm["images"])
+		if err != nil {
+			return nil, false, err
+		}
+		if hasImages {
 			images = append(images, extra...)
 			changed = true
 		}
@@ -126,27 +177,30 @@ func normalizeMessages(msgs []any, native bool) ([]any, bool, error) {
 	return out, sawVision, nil
 }
 
-func existingImages(v any) ([]string, bool) {
+func (d *mediaDecoder) existingImages(v any) ([]string, bool, error) {
+	if v == nil {
+		return nil, false, nil
+	}
 	arr, ok := v.([]any)
 	if !ok {
-		return nil, false
+		return nil, false, errors.New("images must be an array")
 	}
 	out := make([]string, 0, len(arr))
 	for _, item := range arr {
 		s, ok := item.(string)
 		if !ok || strings.TrimSpace(s) == "" {
-			continue
+			return nil, false, errors.New("images must contain non-empty image data")
 		}
-		b64, err := decodeImageRef(s)
+		b64, err := d.decodeImageRef(s)
 		if err != nil {
-			continue
+			return nil, false, err
 		}
 		out = append(out, b64)
 	}
-	return out, len(out) > 0
+	return out, len(out) > 0, nil
 }
 
-func extractMedia(content any) (text string, images []string, changed bool, err error) {
+func (d *mediaDecoder) extractMedia(content any) (text string, images []string, changed bool, err error) {
 	switch c := content.(type) {
 	case nil:
 		return "", nil, false, nil
@@ -169,13 +223,13 @@ func extractMedia(content any) (text string, images []string, changed bool, err 
 				}
 			case "image_url", "input_image":
 				ref := imageRef(p)
-				b64, e := decodeImageRef(ref)
+				b64, e := d.decodeImageRef(ref)
 				if e != nil {
 					return "", nil, false, e
 				}
 				images = append(images, b64)
 			case "file", "input_file":
-				fileText, img, e := decodeFilePart(p)
+				fileText, img, e := d.decodeFilePart(p)
 				if e != nil {
 					return "", nil, false, e
 				}
@@ -215,7 +269,7 @@ func imageRef(p map[string]any) string {
 	return str(p["url"])
 }
 
-func decodeFilePart(p map[string]any) (string, string, error) {
+func (d *mediaDecoder) decodeFilePart(p map[string]any) (string, string, error) {
 	file, _ := p["file"].(map[string]any)
 	if file == nil {
 		file = p
@@ -242,7 +296,8 @@ func decodeFilePart(p map[string]any) (string, string, error) {
 		mime = mimeFromName(name)
 	}
 	if strings.HasPrefix(mime, "image/") {
-		return "", payload, nil
+		img, err := d.decodeImageRef(raw)
+		return "", img, err
 	}
 	if isTextMIME(mime, name) {
 		decoded, err := base64.StdEncoding.DecodeString(payload)
@@ -264,20 +319,50 @@ func decodeFilePart(p map[string]any) (string, string, error) {
 	return "", "", fmt.Errorf("unsupported file type %q; send images (jpeg/png/webp/gif) or UTF-8 text", mime)
 }
 
-func decodeImageRef(ref string) (string, error) {
+func (d *mediaDecoder) decodeImageRef(ref string) (string, error) {
+	if err := d.ctx.Err(); err != nil {
+		return "", err
+	}
+	if d.images >= maxImages {
+		return "", errors.New("a request may contain at most 32 images")
+	}
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return "", errors.New("empty image")
 	}
+	var data []byte
+	var err error
 	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
-		return fetchImage(ref)
+		data, err = fetchImage(d.ctx, ref)
+	} else {
+		var payload string
+		_, payload, err = splitData(ref)
+		if err == nil {
+			data, err = base64.StdEncoding.DecodeString(payload)
+			if err != nil {
+				data, err = base64.RawStdEncoding.DecodeString(payload)
+			}
+		}
 	}
-	_, payload, err := splitData(ref)
-	return payload, err
+	if err != nil {
+		return "", err
+	}
+	if err := validateImage(data); err != nil {
+		return "", err
+	}
+	if d.bytes+len(data) > maxImageBytes {
+		return "", errors.New("combined images exceed 32 MiB")
+	}
+	d.images++
+	d.bytes += len(data)
+	return base64.StdEncoding.EncodeToString(data), nil
 }
 
 func splitData(raw string) (mime, payload string, err error) {
 	raw = strings.TrimSpace(raw)
+	if len(raw) > base64.StdEncoding.EncodedLen(maxInlineBytes)+1024 {
+		return "", "", errors.New("attachment exceeds 8 MiB")
+	}
 	if strings.HasPrefix(raw, "data:") {
 		header, data, ok := strings.Cut(raw, ",")
 		if !ok {
@@ -312,32 +397,55 @@ func splitData(raw string) (mime, payload string, err error) {
 	return "", payload, nil
 }
 
-func fetchImage(rawURL string) (string, error) {
-	u, err := url.Parse(rawURL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-		return "", errors.New("image URL must be http or https")
-	}
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", "dgx-spark-gateway/1")
-	res, err := mediaHTTPClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("fetch image: %w", err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return "", fmt.Errorf("fetch image: HTTP %d", res.StatusCode)
-	}
-	data, err := io.ReadAll(io.LimitReader(res.Body, maxInlineBytes+1))
-	if err != nil {
-		return "", err
-	}
+func validateImage(data []byte) error {
 	if len(data) > maxInlineBytes {
-		return "", fmt.Errorf("image larger than %d bytes", maxInlineBytes)
+		return errors.New("image exceeds 8 MiB")
 	}
-	return base64.StdEncoding.EncodeToString(data), nil
+	switch http.DetectContentType(data) {
+	case "image/png", "image/jpeg", "image/gif":
+		config, _, err := image.DecodeConfig(bytes.NewReader(data))
+		if err != nil || config.Width < 1 || config.Height < 1 || config.Width > 40_000 || config.Height > 40_000 || int64(config.Width)*int64(config.Height) > 40_000_000 {
+			return errors.New("invalid image or image larger than 40 megapixels")
+		}
+	case "image/webp":
+		width, height, ok := webpSize(data)
+		if !ok || width*height > 40_000_000 {
+			return errors.New("invalid WebP image")
+		}
+	default:
+		return errors.New("image must contain PNG, JPEG, WebP or GIF data")
+	}
+	return nil
+}
+
+func webpSize(data []byte) (uint64, uint64, bool) {
+	if len(data) < 20 || uint64(binary.LittleEndian.Uint32(data[4:8]))+8 != uint64(len(data)) {
+		return 0, 0, false
+	}
+	size := uint64(binary.LittleEndian.Uint32(data[16:20]))
+	if size > uint64(len(data)-20) {
+		return 0, 0, false
+	}
+	switch string(data[12:16]) {
+	case "VP8 ":
+		if size >= 10 && data[20]&1 == 0 && bytes.Equal(data[23:26], []byte{0x9d, 0x01, 0x2a}) {
+			width := uint64(binary.LittleEndian.Uint16(data[26:28]) & 0x3fff)
+			height := uint64(binary.LittleEndian.Uint16(data[28:30]) & 0x3fff)
+			return width, height, width > 0 && height > 0
+		}
+	case "VP8L":
+		if size >= 5 && data[20] == 0x2f {
+			bits := binary.LittleEndian.Uint32(data[21:25])
+			return uint64(bits&0x3fff) + 1, uint64((bits>>14)&0x3fff) + 1, bits>>29 == 0
+		}
+	case "VP8X":
+		if size == 10 {
+			width := uint64(data[24]) | uint64(data[25])<<8 | uint64(data[26])<<16
+			height := uint64(data[27]) | uint64(data[28])<<8 | uint64(data[29])<<16
+			return width + 1, height + 1, true
+		}
+	}
+	return 0, 0, false
 }
 
 func openaiParts(text string, images []string) []any {
