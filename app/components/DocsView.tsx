@@ -704,7 +704,7 @@ export function DocsView() {
           id="models"
           icon={<Server className="h-5 w-5 text-nvidia-green" />}
           title="Models"
-          description="Pass the model name in every request. Capabilities (vision, tools, embedding, thinking) come from the running Ollama instance — use a model that supports the feature you need."
+          description="Include the model name in every inference request and choose a model that supports the features you need. The list loads from Ollama on the DGX Spark. If the Spark is off or asleep, “Failed to fetch models list” is expected. Turn it on or wake it, then refresh this page. If it is already running, check Ollama and the gateway connection."
         >
           {loadingModels ? (
             <div className="flex items-center gap-2 rounded-lg border border-border bg-panel p-4 text-sm text-foreground/50">
