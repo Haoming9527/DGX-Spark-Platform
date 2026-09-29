@@ -1,10 +1,44 @@
-# DGX Spark Platform
+<p align="center">
+  <img src="public/logo.svg" alt="DGX Spark Platform logo" width="88" height="88">
+</p>
 
-**A private AI workspace and homelab dashboard for NVIDIA DGX Spark.**
+<h1 align="center">DGX Spark Platform</h1>
 
-Chat with your models, connect OpenAI-compatible clients, manage access and usage, and control the hardware that runs it—all from one web interface.
+<p align="center"><strong>Your AI. Your hardware. Shared with your people.</strong></p>
 
-The Raspberry Pi 5 runs the always-on gateway and MQTT broker. The DGX Spark supplies inference when it is powered on. This separation keeps power monitoring and Spark controls available even when the Spark is off, provided the Pi, network, and frontend services are available.
+<p align="center">Local inference, shared access, and physical power control in one platform.</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-75B900?style=flat-square" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/API-OpenAI_compatible-007B51?style=flat-square" alt="OpenAI-compatible API">
+  <img src="https://img.shields.io/badge/hardware-DGX_Spark-75B900?style=flat-square" alt="DGX Spark hardware">
+  <img src="https://img.shields.io/badge/deploy-Docker_Compose-2496ED?style=flat-square" alt="Docker Compose deployment">
+</p>
+
+<p align="center">
+  <a href="#hardware-and-services">Hardware</a> ·
+  <a href="#getting-started">Get started</a> ·
+  <a href="#roles-and-permissions">Share access</a> ·
+  <a href="#spark-power-control">Power controls</a> ·
+  <a href="#openai-compatible-clients">API clients</a>
+</p>
+
+| Linux server | DGX Spark | Athom / Tasmota |
+| --- | --- | --- |
+| Gateway, routing, and MQTT | Local models and Ollama | Optional power metering and Spark relay control |
+| Raspberry Pi 5 in this setup | Your inference machine | Connected to the physical hardware |
+
+Chat with your models, connect OpenAI-compatible clients, manage access and usage, and control the hardware that runs it - all from one web interface.
+
+A Linux server runs the gateway and MQTT broker; this deployment uses a Raspberry Pi 5. The DGX Spark runs the models. Keeping the gateway on a separate machine lets you check readings and manage Spark power while the Spark is off, provided the server, network, and frontend services are available.
+
+## From your desk to a shared AI service
+
+Give collaborators a chat URL or a personal API key. Let trusted operators manage the Spark's power. See the electricity your hardware is actually using, and coordinate shutdown with the requests running through the gateway.
+
+| Share the models | Manage access | Connect the hardware |
+| --- | --- | --- |
+| Streamed chat and OpenAI-compatible clients | Personal API keys, roles, and model restrictions | Live meter readings and guarded Spark power controls |
 
 ## What you can do
 
@@ -15,7 +49,30 @@ The Raspberry Pi 5 runs the always-on gateway and MQTT broker. The DGX Spark sup
 - **Control the Spark** — power on remotely or request a graceful SSH shutdown followed by guarded plug cutoff.
 - **Separate responsibilities** — users get AI features, operators also get Spark controls, and admins manage the platform.
 
-The interface uses a sticker-poster visual style, with paper/asphalt surfaces, selective color accents, an EXIT navigation plate, and light/dark themes.
+Bring your own inference server, database, and domain. The reference deployment uses a DGX Spark and Raspberry Pi 5; the inference layer can connect to other Ollama servers. The power controller and its setup guide specifically target the Spark.
+
+## Hardware and services
+
+| Item | Needed for | Reference setup |
+| --- | --- | --- |
+| AI computer with enough memory and storage for your chosen models | Model inference | NVIDIA DGX Spark running Ollama |
+| Linux server with storage, power supply, and network access | Go gateway, Olla, tunnel, and optional MQTT broker | Raspberry Pi 5 with a 64-bit OS; it does not run the models |
+| Router and network connection between the gateway and AI computer | Inference, SSH, and MQTT | Reserve LAN addresses for the Pi, Spark, and plugs |
+| Tasmota power meter with voltage/current/power/energy readings | Optional Pi monitoring | Athom meter supplying only the Pi; the gateway never switches its relay |
+| Separate Tasmota metering plug with a controllable relay | Optional Spark power control | Athom Plug V3 supplying only the Spark |
+| Browser or OpenAI-compatible application | User access | Desktop or mobile browser, SDK, or API client |
+
+The smart plugs are optional for AI sharing. Choose plugs rated for your local mains supply and the connected device. Do not power the Linux server through the Spark-controlled outlet. Model memory requirements depend on the model, quantization, context length, and concurrent requests; this project does not define a universal GPU or RAM minimum.
+
+You also need:
+
+- **Neon PostgreSQL** shared by the frontend and Go gateway.
+- **A Next.js host**, such as Vercel or your own Node.js server.
+- **Docker Engine and Compose** on the gateway host.
+- **Your own domain and HTTPS routing** for remote sharing. The guide uses Cloudflare Tunnel on the Pi.
+- **Mosquitto** on the Linux server if using the Tasmota features.
+
+The supplied Compose file starts only the Go API and Olla. It does not install Ollama, Mosquitto, Cloudflare Tunnel, the frontend, or the database.
 
 ## How it fits together
 
@@ -26,7 +83,7 @@ flowchart TD
     Web --> Tunnel
     Web --> DB[(Neon PostgreSQL)]
 
-    subgraph Pi[Always-on Raspberry Pi 5]
+    subgraph Pi[Linux server / Raspberry Pi 5]
         Tunnel --> Gateway[Go gateway]
         Gateway --> Olla[Olla model router]
         Gateway --> MQTT[Mosquitto MQTT]
@@ -38,6 +95,13 @@ flowchart TD
     MQTT <--> PiMeter[Pi power meter — read only]
     MQTT <--> SparkPlug[Spark smart plug — readings and relay]
     SparkPlug -->|AC power| Spark
+
+    classDef compute fill:#17251c,stroke:#75B900,color:#f4f6ef
+    classDef access fill:#142733,stroke:#58a6ff,color:#f4f6ef
+    classDef hardware fill:#302715,stroke:#d7b65d,color:#f4f6ef
+    class Gateway,Olla,Inference,Spark compute
+    class Browser,Client,Web,Tunnel,DB access
+    class MQTT,PiMeter,SparkPlug hardware
 ```
 
 | Component | Responsibility |
@@ -81,9 +145,25 @@ New accounts receive the `user` role. For a new installation, create your accoun
 
 ## Getting started
 
-You will need Node.js compatible with the dependencies (for example, Node.js 22.12+ in the 22.x series), npm, a Neon database, Docker with Compose, and an accessible Ollama inference endpoint. Infrastructure features additionally need the Pi's MQTT broker and configured Tasmota plugs.
+Use Node.js compatible with the dependencies (for example, Node.js 22.12+ in the 22.x series) and npm for the frontend. Install [Docker Engine and the Compose plugin](https://docs.docker.com/engine/install/debian/) on the Pi's 64-bit Debian-based OS. Go is built inside Docker; a host Go installation is only needed for native development.
+
+### Before you start: prepare inference
+
+On the AI computer, install Ollama using its [Linux guide](https://docs.ollama.com/linux), download a model that fits your hardware, and verify it locally:
+
+```bash
+ollama pull <model-id>
+ollama run <model-id>
+curl --fail http://127.0.0.1:11434/api/tags
+```
+
+Replace `<model-id>` with an actual Ollama model tag. Make the inference endpoint reachable from the Pi: either through an authenticated HTTPS proxy or through a restricted LAN connection. Ollama's [network configuration guide](https://docs.ollama.com/faq) explains `OLLAMA_HOST`; binding a listener to the network does not add authentication. Keep direct Ollama access limited to trusted hosts.
+
+For the reference HTTPS setup, the upstream proxy must validate `X-API-Key` against your `SG_API_KEY`. This repository does not install that proxy. If you already have an inference endpoint, reuse it.
 
 ### 1. Clone and configure
+
+Fork the repository if you want your own deployment to track your changes. Clone it on the Pi for the gateway and on your development machine for frontend work; replace the URL below with your fork when applicable.
 
 ```bash
 git clone https://github.com/Haoming9527/dgx-spark-platform.git
@@ -110,7 +190,15 @@ The server-side credentials must match across the two services:
 
 Use distinct secrets for these purposes. Personal SDK keys are created through the UI; they are separate from these service credentials. Keep `.env` files and SSH private keys out of Git.
 
-Configure the inference endpoints in [Olla's configuration](gateway/config/olla.yaml), including the upstream authentication key. The checked-in hostname is this deployment's example; replace it for your own hardware.
+Replace every deployment-specific domain, IP, hostname, and MQTT topic with your own. The `dgxspark.dev` domains in this repository belong to the reference deployment and are not services supplied to people cloning the project.
+
+Set `SG_API_ENDPOINT` in `gateway/.env` to your inference server's base URL. Also edit `discovery.static.endpoints` in [Olla's configuration](gateway/config/olla.yaml): its checked-in `url` is literal, so changing `.env` alone does not update it. Set `url` and `name` for your server and keep `type: ollama`, `model_url: /api/tags`, and the health-check settings. For authenticated HTTPS, keep the existing `auth` block and configure `SG_API_KEY` to match your upstream proxy.
+
+For a private LAN Ollama endpoint, use its LAN address and port, such as `http://192.168.1.50:11434`, in both places. Remove that endpoint's `auth` block if the server has no authentication; the custom header alone does not protect Ollama. Do not publish that unauthenticated endpoint to the Internet.
+
+Generate each service secret separately, for example with `openssl rand -hex 32`. Set the same Neon `DATABASE_URL` in both environments, a separate `JWT_SECRET` for Next.js, and a `REFERRAL_CODE` that you will share with invited users.
+
+**Starting with AI sharing only:** still set a distinct `INFRA_READ_KEY`, which gateway startup requires. In `gateway/.env`, clear `INFRA_CONTROL_KEY`, `DGX_SPARK_HOST`, `DGX_SPARK_IP`, and `DGX_SPARK_SSH_ADDR`. Leave `DGX_SPARK_OFF_MAX_WATTS` empty. This also removes the template's invalid `your-ip` Docker mapping. Keep `MQTT_BROKER_URL` syntactically valid; a missing broker leaves readings unavailable but does not prevent AI startup. Configure power controls later using the linked guide. These steps are for a fresh setup, not a way to bypass an existing controller's recovery state.
 
 ### 2. Prepare the database
 
@@ -138,7 +226,7 @@ The health endpoint should return `ok`. It confirms the gateway process is runni
 | Go API | `http://127.0.0.1:50080` on the Pi |
 | Olla | `http://olla:40114` within Compose; `http://127.0.0.1:40114` on the Pi |
 
-The API host port comes from `API_PORT`; the API container listens on `8080`. Configure `INFRA_READ_KEY` and the MQTT settings even when setting up the AI side first. Spark-specific configuration can be completed later without blocking Pi readings.
+The API host port comes from `API_PORT`; the API container listens on `8080`. `INFRA_READ_KEY` is required even for an AI-only setup. MQTT connectivity is needed only for readings and power controls; complete Spark-specific configuration when adding those features.
 
 Full instructions: [Pi gateway guide](gateway/README.md).
 
@@ -147,7 +235,7 @@ Full instructions: [Pi gateway guide](gateway/README.md).
 From the repository root:
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -160,9 +248,36 @@ npm start
 
 Set both `INFERENCE_GATEWAY_URL` and `INFRA_GATEWAY_URL` to a gateway address reachable by the **Next.js server**. Use `http://127.0.0.1:50080` only when Next.js can reach the gateway there, such as on the same machine or through an SSH port forward. A frontend hosted on Vercel needs the public HTTPS gateway URL.
 
+For Vercel, first set up the gateway's HTTPS route using [Public deployment](#public-deployment). Import your fork with the repository root as the project directory, copy the root `.env` settings into the project's environment settings, and deploy. Do not use `gateway/` as the frontend project root. Leave `TRUSTED_CLIENT_IP_HEADER` blank on Vercel.
+
+### 5. Create the owner account and invite people
+
+Sign up with your configured referral code. In Neon's SQL editor, promote only your account, replacing the example email:
+
+```sql
+UPDATE users
+SET role = 'admin'
+WHERE email = 'your-email@example.com'
+RETURNING id, email, role;
+```
+
+Confirm exactly one intended account was returned. Refresh your session, open **Admin → Users**, and assign roles there for subsequent users. Keep ordinary collaborators as `user`; grant `operator` only to people who should be able to shut down the shared Spark.
+
+Share the frontend URL and referral code with collaborators. Each person creates their own account and personal API key. Share the gateway's `/v1` base URL with SDK users; never distribute the frontend's service keys, MQTT password, or SSH key. Configure model restrictions in **Admin → Models** and check access with a regular user account before inviting everyone.
+
+**Access scope:** signup is invite-gated, but the current app also allows rate-limited guest chat on unrestricted models. A public frontend is therefore not an invite-only inference service. If your deployment must be private, put the frontend behind an access layer that covers both pages and API routes. Usage reporting is not billing or a per-user spending quota.
+
+### 6. Check the shared setup
+
+- `/healthz` returns `ok` from the gateway URL.
+- Models appear in the web UI, a response streams, and stopping generation stops the request.
+- A personal API key can list `/v1/models` and make an inference request; an unauthenticated gateway request is rejected.
+- A regular user cannot open admin or power-control features.
+- If power control is configured, complete the attended checks in the Spark guide before allowing operators to use it.
+
 ## Public deployment
 
-This deployment uses:
+Use your own equivalents of these reference hostnames:
 
 - `www.dgxspark.dev` for the Next.js frontend.
 - `api.dgxspark.dev` for the Go gateway on the Pi.
@@ -178,7 +293,7 @@ For a dashboard-managed tunnel, install the Pi's tunnel connector using Cloudfla
 | Service | `http://127.0.0.1:50080` |
 | Path | Empty, to forward all gateway paths |
 
-If that hostname already has a DNS record, check its target and move it to the Pi tunnel when ready. Keep the API route on the always-on Pi so Spark shutdown does not remove access to power controls.
+If that hostname already has a DNS record, check its target and move it to the Linux server's tunnel when ready. Keep the API route on that server so Spark shutdown does not remove access to power controls.
 
 Alternatively, use the repository's [locally managed tunnel configuration](gateway/cloudflared.example.yml). Choose either dashboard-managed or locally managed configuration for your tunnel. See [Cloudflare's setup guide](https://developers.cloudflare.com/tunnel/get-started/) for installation.
 
@@ -200,6 +315,8 @@ Publish only the authenticated Go gateway. Olla's host port is bound to localhos
 Vercel supplies the trusted client IP automatically. When self-hosting Next.js behind a reverse proxy, set `TRUSTED_CLIENT_IP_HEADER` only to a header that the proxy overwrites with the client's IP, and prevent direct access to the origin. Otherwise leave it empty: anonymous requests share one conservative rate-limit bucket. Rate-limit identifiers are hashed and counters expire in Neon.
 
 ## Spark power control
+
+To add the optional hardware features, install and configure Mosquitto on the Pi with authentication and LAN-only access. Configure both Tasmota devices with the Pi's broker address, broker credentials, distinct topics, and the standard `%prefix%/%topic%/` FullTopic. Copy those settings into `gateway/.env`. Follow the [Pi meter guide](gateway/README.md) for read-only monitoring, then the [Spark setup guide](gateway/docs/spark-power.md) for SSH keys, the restricted helper, plug calibration, and Auto Boot. Mosquitto must remain available when the Spark is off.
 
 The Spark controller uses a dedicated MQTT topic and a restricted SSH key. Power-on restores the plug's AC supply; Spark's UEFI **Auto Boot** setting must allow it to start when power returns.
 
@@ -270,6 +387,17 @@ Preserve existing `.env` files and add new settings from the examples as needed.
 For this security update, apply `sql/migrations/20260929_rate_limit_buckets.sql` in Neon's SQL editor first, then rebuild both Compose services using the command above and redeploy the frontend. For a locally hosted frontend, run `npm ci`, `npm run build`, and restart its process. Existing Spark SSH keys and helpers do not need reinstalling for this update.
 
 For development, `npm run lint` checks the frontend. With a compatible local Go toolchain, run `go vet ./...` and `go build .` from `gateway/api/`.
+
+## Contributions welcome
+
+Happy to welcome contributions of any code, documentation, bug reports, design improvements, or experience running the project on different hardware.
+
+- **Found a bug?** Open an issue with steps to reproduce, your setup, and logs with secrets removed.
+- **Have an idea?** Start an issue to discuss it, especially before a larger change.
+- **Want to build?** Fork the repository and open a pull request explaining what changed and how you checked it.
+- **Tried another setup?** Share what worked with your Linux server, AI hardware, or power meter to help others get started.
+
+Please keep contributions focused and preserve authentication and power-control safeguards. Never include API keys, passwords, private SSH keys, or personal data in issues or pull requests.
 
 ## License and attribution
 
