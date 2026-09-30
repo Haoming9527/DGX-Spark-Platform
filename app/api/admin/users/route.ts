@@ -1,7 +1,7 @@
 import { apiFailure, readJsonBody } from "@/lib/apiRequest";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdminRequest } from "@/lib/requireAdminRequest";
+import { requireAdminRequest } from "@/lib/requireAccount";
 import { applyAdminUserPatch, deleteUserGuarded, type UserRole } from "@/lib/account";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

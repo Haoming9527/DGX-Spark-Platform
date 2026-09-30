@@ -206,12 +206,12 @@ tunnel must route `/infra/dgx-spark` and `/infra/dgx-spark/actions` to the Pi AP
 The frontend's requests use `/api/infra/dgx-spark` and its `/actions` route. Both
 require an active admin or operator; POST additionally requires same-origin access.
 
-Apply [the role migration](../../sql/migrations/20260928_operator_role.sql) to the
-same database used by Next.js. Run it once in the Neon SQL editor, or from the repo
-root using an already configured database connection:
+Apply [schema.sql](../../schema.sql) to the same database used by Next.js. It preserves
+existing data and updates the operator-role constraint. Run it in the Neon SQL editor,
+or from the repo root using an already configured database connection:
 
 ```sh
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/migrations/20260928_operator_role.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f schema.sql
 ```
 
 Then deploy Next.js and rebuild the Pi gateway from `gateway/`:

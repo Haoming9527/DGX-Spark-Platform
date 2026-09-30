@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useId } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Send, StopCircle, BrainCircuit, Mic, MicOff, ImagePlus, Plus, X, ChevronDown } from "lucide-react";
+import { Send, StopCircle, BrainCircuit, Mic, MicOff, ImagePlus, Plus, X, ChevronDown, Globe, Plug } from "lucide-react";
 import { ChatImage } from "../types/chat";
 import Image from "next/image";
 import type { ThinkingMode } from "@/lib/modelThinking";
@@ -43,6 +43,10 @@ interface ChatInputProps {
   stopGeneration: () => void;
   useReasoning: boolean;
   setUseReasoning: (val: boolean) => void;
+  useWebSearch: boolean;
+  setUseWebSearch: (val: boolean) => void;
+  onMcp: () => void;
+  mcpCount: number;
   canThink: boolean;
   thinkingMode?: ThinkingMode;
   canSee: boolean;
@@ -66,6 +70,10 @@ export function ChatInput({
   stopGeneration,
   useReasoning,
   setUseReasoning,
+  useWebSearch,
+  setUseWebSearch,
+  onMcp,
+  mcpCount,
   canThink,
   thinkingMode,
   canSee,
@@ -287,7 +295,7 @@ export function ChatInput({
   };
 
   const chip =
-    "sticker-sm relative inline-flex h-9 w-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap text-xs font-medium text-muted !shadow-[0_2px_4px_rgb(0_0_0/0.06)] transition-[filter,background-color,color,border-color] hover:brightness-110 hover:text-foreground focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-foreground @[420px]/composer:w-auto @[420px]/composer:px-3";
+    "sticker-sm relative inline-flex h-9 w-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap text-xs font-medium text-muted !shadow-[0_2px_4px_rgb(0_0_0/0.06)] transition-[filter,background-color,color,border-color] hover:brightness-110 hover:text-foreground focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-foreground @[600px]/composer:w-auto @[600px]/composer:px-3";
   const chipImageOn =
     "!border-[#2563eb]/55 !bg-[#2563eb]/20 !text-[#1d4ed8]";
   const chipThinkOn =
@@ -391,7 +399,7 @@ export function ChatInput({
 
           <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
             <div
-              className="flex min-w-0 items-center"
+              className="flex min-w-0 flex-1 items-center"
               onKeyDown={(event) => {
                 if (event.key === "Escape" && toolsOpen) {
                   event.preventDefault();
@@ -426,7 +434,7 @@ export function ChatInput({
                 >
                   <Plus className="h-5 w-5" strokeWidth={1.8} />
                 </motion.span>
-                {!toolsOpen && (isListening || pendingImages.length > 0 || (canThink && useReasoning)) && (
+                {!toolsOpen && (mcpCount > 0 || useWebSearch || isListening || pendingImages.length > 0 || (canThink && useReasoning)) && (
                   <span
                     aria-hidden="true"
                     className={`absolute right-0 top-0 h-2 w-2 rounded-full ring-2 ring-panel ${isListening ? "bg-alert" : "bg-nvidia-green"}`}
@@ -441,7 +449,7 @@ export function ChatInput({
                 transition={{ duration: reduceMotion ? 0 : toolsOpen ? 0.32 : 0.2, ease: [0.22, 1, 0.36, 1] }}
                 aria-hidden={!toolsOpen}
                 inert={!toolsOpen}
-                className="shrink-0 overflow-hidden"
+                className="custom-scrollbar min-w-0 overflow-x-auto"
               >
                 <motion.div
                   initial={false}
@@ -465,7 +473,7 @@ export function ChatInput({
                       title={canSee ? "Attach images" : "This model does not accept images"}
                     >
                       <ImagePlus className="h-3.5 w-3.5" strokeWidth={2} />
-                      <span className="hidden @[420px]/composer:inline">Image</span>
+                      <span className="hidden @[600px]/composer:inline">Image</span>
                     </button>
                   </motion.div>
 
@@ -474,26 +482,46 @@ export function ChatInput({
                       type="button"
                       disabled={!canThink}
                       onClick={() => canThink && setUseReasoning(!useReasoning)}
-                      aria-pressed={thinkingMode === "required" || canThink && useReasoning}
+                      aria-pressed={canThink && useReasoning}
                       aria-disabled={!canThink}
-                      aria-label={thinkingMode === "required" ? "Thinking (always on)" : thinkingMode === "levels" ? "Thinking (model default)" : "Thinking"}
+                      aria-label={useReasoning ? "Thinking: deeper research" : "Thinking: light and fast"}
                       className={`${chip} ${
-                        thinkingMode === "required"
-                          ? `${chipThinkOn} cursor-default`
-                          : !canThink
+                        !canThink
                           ? "cursor-not-allowed opacity-35 hover:brightness-100 hover:text-muted"
                           : useReasoning
                             ? chipThinkOn
                             : ""
                       }`}
-                      title={thinkingMode === "required" ? "This model always uses thinking" : thinkingMode === "levels" ? "This model controls thinking through reasoning levels" : canThink ? "Toggle Reasoning Mode" : "This model does not support thinking"}
+                      title={!canThink ? "Choose a model with thinking or tool support." : `${useReasoning ? "Deeper thinking and research. Click for a lighter, faster response." : "Light and fast. Click for deeper thinking and research."}${thinkingMode === "required" ? " This model still reasons in light mode." : ""}`}
                     >
                       <BrainCircuit className="h-3.5 w-3.5" strokeWidth={2} />
-                      <span className="hidden @[420px]/composer:inline">Thinking</span>
+                      <span className="hidden @[600px]/composer:inline">Thinking</span>
                     </button>
                   </motion.div>
 
                   <motion.div variants={toolVariants} custom={2} className="flex">
+                    <button
+                      type="button"
+                      onClick={() => setUseWebSearch(!useWebSearch)}
+                      aria-pressed={useWebSearch}
+                      aria-label="Force web search"
+                      className={`${chip} ${useWebSearch ? "!border-nvidia-green/50 !bg-nvidia-green/15 !text-foreground" : ""}`}
+                      title={useWebSearch ? "Web search required for this message" : "Auto search is available; click to require a web search"}
+                    >
+                      <Globe className="h-3.5 w-3.5" strokeWidth={2} />
+                      <span className="hidden @[600px]/composer:inline">Search</span>
+                    </button>
+                  </motion.div>
+
+                  <motion.div variants={toolVariants} custom={3} className="flex">
+                    <button type="button" onClick={onMcp} aria-label={`MCP connections${mcpCount ? `, ${mcpCount} selected` : ""}`} aria-haspopup="dialog" title="Connect MCP tools"
+                      className={`${chip} ${mcpCount ? "!border-nvidia-green/50 !bg-nvidia-green/15 !text-foreground" : ""}`}>
+                      <Plug className="h-3.5 w-3.5" strokeWidth={2} />
+                      <span className="hidden @[600px]/composer:inline">MCP{mcpCount ? ` (${mcpCount})` : ""}</span>
+                    </button>
+                  </motion.div>
+
+                  <motion.div variants={toolVariants} custom={4} className="flex">
                     <button
                       type="button"
                       onClick={() => void toggleListening()}
@@ -505,7 +533,7 @@ export function ChatInput({
                       {isListening ? (
                         <>
                           <MicOff className="h-3.5 w-3.5" strokeWidth={2} />
-                          <span className="hidden @[420px]/composer:inline">Recording</span>
+                          <span className="hidden @[600px]/composer:inline">Recording</span>
                           <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
                             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-alert opacity-75 motion-reduce:animate-none" />
                             <span className="relative inline-flex h-2 w-2 rounded-full bg-alert" />
@@ -514,7 +542,7 @@ export function ChatInput({
                       ) : (
                         <>
                           <Mic className="h-3.5 w-3.5" strokeWidth={2} />
-                          <span className="hidden @[420px]/composer:inline">Voice</span>
+                          <span className="hidden @[600px]/composer:inline">Voice</span>
                         </>
                       )}
                     </button>
