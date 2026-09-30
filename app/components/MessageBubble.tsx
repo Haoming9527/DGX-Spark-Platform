@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronRight, Clock, Zap, Copy, Check, RotateCcw } from "lucide-react";
+import { useId, useMemo, useRef, useState } from "react";
+import { Clock, Zap, Copy, Check, Pencil, RotateCcw } from "lucide-react";
 import { Message } from "../types/chat";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -9,27 +9,26 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
 import oneLight from "react-syntax-highlighter/dist/esm/styles/prism/one-light";
 import type { Components } from "react-markdown";
-import { StickerBusy } from "./ui/StickerBusy";
 import { useTheme } from "./ui/ThemeToggle";
 import Image from "next/image";
+import { McpActivity } from "./McpActivity";
+import { copyWithSourceCitations, displayWithSourceCitations, remarkSourceCitations } from "@/lib/searchCitations";
+import { ResponseActivity } from "./ui/ResponseActivity";
+import { SourceChip, SourcesDisclosure } from "./ui/SourceCitations";
+import { MessageEditor } from "./ui/MessageEditor";
+import styles from "./MessageBubble.module.css";
+import { rehypeStreamingWords } from "@/lib/streamingMarkdown";
 
 interface MessageBubbleProps {
   message: Message;
   onRetry?: () => void;
+  retryDisabled?: boolean;
+  onEdit?: (text: string) => void;
+  editDisabled?: boolean;
   showActions?: boolean;
   streaming?: boolean;
+  onToolDecision?: (id: string, approved: boolean) => void;
 }
-
-const thoughtComponents: Components = {
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
-  ),
-  table: ({ children }) => (
-    <div className="my-3 max-w-full overflow-x-auto">
-      <table>{children}</table>
-    </div>
-  ),
-};
 
 function isProseMistakenForCode(code: string): boolean {
   const t = code.trim();
@@ -39,7 +38,8 @@ function isProseMistakenForCode(code: string): boolean {
   return /[.?!)]$/.test(t) || /^(would|do|can|could|should|shall|may|let|if|what|how|why)\b/i.test(t);
 }
 
-function markdownComponents(isDark: boolean, highlight: boolean): Components {
+function markdownComponents(isDark: boolean, highlight: boolean, sources: Message["sources"] = []): Components {
+  const knownSources = new Map(sources.map(source => [source.id, source]));
   return {
   pre({ children }) {
     return <>{children}</>;
@@ -101,7 +101,12 @@ function markdownComponents(isDark: boolean, highlight: boolean): Components {
       </pre>
     );
   },
-  a({ href, children }) {
+  a({ href, children, node }) {
+    const sourceId = node?.properties?.["data-source-id"] || node?.properties?.dataSourceId;
+    if (sourceId) {
+      const source = knownSources.get(String(sourceId));
+      return source ? <SourceChip source={source} /> : null;
+    }
     return (
       <a
         href={href}
@@ -136,21 +141,28 @@ function markdownComponents(isDark: boolean, highlight: boolean): Components {
   };
 }
 
-export function MessageBubble({ message, onRetry, showActions, streaming = false }: MessageBubbleProps) {
+export function MessageBubble({ message, onRetry, retryDisabled = false, onEdit, editDisabled = false, showActions, streaming = false, onToolDecision }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const components = useMemo(
-    () => markdownComponents(isDark, isUser || !streaming),
-    [isDark, isUser, streaming],
+    () => markdownComponents(isDark, isUser || !streaming, message.sources),
+    [isDark, isUser, streaming, message.sources],
   );
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  const userMessageRef = useRef<HTMLDivElement>(null);
+  const editorId = useId();
+  const displayContent = useMemo(() => !isUser && /\[source(?::[a-zA-Z0-9_-]*)?$/.test(message.content)
+    ? displayWithSourceCitations(message.content, message.sources, true)
+    : message.content, [isUser, message.content, message.sources]);
 
   const handleCopy = async () => {
-    const text = message.content?.trim();
+    const text = displayContent.trim();
     if (!text) return;
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(copyWithSourceCitations(text, message.sources));
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch (err) {
@@ -161,92 +173,104 @@ export function MessageBubble({ message, onRetry, showActions, streaming = false
   if (isUser) {
     return (
       <div className="flex w-full justify-end">
-        <div className="sticker max-w-[85%] !rounded-[1.25rem] px-4 py-2.5 text-[15px] leading-normal text-foreground sm:max-w-[70%]">
-          {message.images && message.images.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-2">
-              {message.images.map((src, i) => (
-                <Image
-                  key={`${message.id}-img-${i}`}
-                  src={src}
-                  alt=""
-                  width={640}
-                  height={480}
-                  unoptimized
-                  className="h-auto max-h-40 w-auto max-w-full rounded-xl object-contain ring-1 ring-border"
-                />
-              ))}
-            </div>
-          )}
-          {message.content ? (
-            <div className="whitespace-pre-wrap break-words [&_p]:m-0 [&_p+_p]:mt-2">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  p: ({ children }) => <p className="m-0">{children}</p>,
-                  code: components.code,
-                  pre: components.pre,
+        <div ref={userMessageRef} tabIndex={-1} className={`${styles.userMessage} ${editing ? styles.editing : ""}`}>
+          <div className="sticker !rounded-[1.25rem] px-4 py-2.5 text-[15px] leading-normal text-foreground">
+            {message.images && message.images.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-2">
+                {message.images.map((src, i) => (
+                  <Image
+                    key={`${message.id}-img-${i}`}
+                    src={src}
+                    alt=""
+                    width={640}
+                    height={480}
+                    unoptimized
+                    className="h-auto max-h-40 w-auto max-w-full rounded-xl object-contain ring-1 ring-border"
+                  />
+                ))}
+              </div>
+            )}
+            {editing && onEdit ? (
+              <MessageEditor
+                id={editorId}
+                content={message.content}
+                disabled={editDisabled}
+                onCancel={() => {
+                  setEditing(false);
+                  requestAnimationFrame(() => {
+                    if (editButtonRef.current && !editButtonRef.current.disabled) editButtonRef.current.focus();
+                    else userMessageRef.current?.focus();
+                  });
                 }}
-              >
-                {message.content}
-              </ReactMarkdown>
-            </div>
-          ) : null}
+                onSave={(text) => {
+                  if (editDisabled) return;
+                  onEdit(text);
+                  setEditing(false);
+                  requestAnimationFrame(() => userMessageRef.current?.focus());
+                }}
+              />
+            ) : message.content ? (
+              <div className="whitespace-pre-wrap break-words [&_p]:m-0 [&_p+_p]:mt-2">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    p: ({ children }) => <p className="m-0">{children}</p>,
+                    code: components.code,
+                    pre: components.pre,
+                  }}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              </div>
+            ) : null}
+          </div>
+          {onEdit && !editing && (
+            <button
+              ref={editButtonRef}
+              type="button"
+              className={styles.actionButton}
+              aria-label="Edit message"
+              title={editDisabled ? "Wait for the response to finish before editing" : "Edit message"}
+              disabled={editDisabled}
+              onClick={() => setEditing(true)}
+            >
+              <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />
+            </button>
+          )}
         </div>
       </div>
     );
   }
 
   const isThinking = streaming && message.isThinking;
-  const showBody = Boolean(message.content) || (streaming && !message.thoughtProcess);
+  const hasActions = Boolean(showActions && message.content && !isThinking);
+  const visibleTools = message.mcpActivity?.filter(activity => ["approval", "running", "unknown", "failed"].includes(activity.status)) ?? [];
 
   return (
     <div className="group flex w-full flex-col gap-2">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-1">
-        {message.thoughtProcess && (
-          <details className="group/think sticker-dark w-full max-w-full !rounded-xl px-3 py-2.5">
-            <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-lg px-1 py-0.5 text-[13px] text-[#b0b0b0] transition-colors hover:text-white [&::-webkit-details-marker]:hidden">
-              <ChevronRight className="h-3.5 w-3.5 transition-transform group-open/think:rotate-90" />
-              <span className="font-display font-bold uppercase tracking-[0.06em]">
-                {isThinking ? "Thinking" : "Thoughts"}
-              </span>
-              {isThinking && (
-                <span className="ml-1.5 inline-flex items-center gap-1" aria-hidden>
-                  <span className="sticker-pulse" />
-                  <span className="sticker-pulse sticker-pulse-delay-1" />
-                  <span className="sticker-pulse sticker-pulse-delay-2" />
-                </span>
-              )}
-            </summary>
-            <div className="custom-scrollbar mt-2 max-h-80 overflow-y-auto overscroll-contain border-t border-white/10 px-1 pt-3">
-              <div className="prose prose-sm prose-invert max-w-none break-words text-[13px] leading-relaxed text-[#b8b8b8] prose-p:my-2.5 prose-headings:mb-2 prose-headings:mt-4 prose-headings:text-sm prose-headings:font-semibold prose-headings:text-[#ededed] prose-strong:font-semibold prose-strong:text-[#ededed] prose-ol:my-3 prose-ul:my-2 prose-li:my-1 prose-li:marker:text-[#a8a8a8] prose-a:text-[#a3d858] prose-a:underline prose-code:rounded prose-code:bg-white/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-[#ededed] prose-code:before:content-none prose-code:after:content-none prose-pre:overflow-x-auto prose-pre:bg-black/25 prose-pre:text-[#dedede] prose-blockquote:border-white/20 prose-blockquote:text-[#b8b8b8] prose-th:text-[#ededed] prose-th:border-white/20 prose-td:border-white/10 [&>:first-child]:mt-0 [&>:last-child]:mb-0 [&_pre_code]:bg-transparent [&_pre_code]:p-0">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={thoughtComponents}>
-                  {message.thoughtProcess}
-                </ReactMarkdown>
-              </div>
-            </div>
-          </details>
-        )}
+        <ResponseActivity message={message} streaming={streaming} />
+        {visibleTools.length > 0 && <McpActivity activities={visibleTools} onDecision={onToolDecision} />}
 
-        {showBody && (
-          <div className="w-full min-w-0 p-[3px] text-[15px] leading-relaxed text-foreground">
-            {message.content ? (
-              <div className="prose prose-sm dark:prose-invert max-w-none break-words text-foreground sm:prose-base prose-p:my-3 prose-p:leading-relaxed prose-p:text-foreground prose-li:text-foreground prose-strong:text-foreground prose-headings:font-display prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-foreground prose-pre:my-0 prose-pre:bg-transparent prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none prose-a:text-nvidia-green prose-a:no-underline hover:prose-a:underline">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-                  {message.content}
+        {message.content && (
+          <div className={`${styles.answer} w-full min-w-0 p-[3px] text-[15px] leading-relaxed text-foreground`}
+            data-stopped={message.responseStatus === "stopped" || message.responseStatus === "error"}>
+            <div className="prose prose-sm dark:prose-invert max-w-none break-words text-foreground sm:prose-base prose-p:my-3 prose-p:leading-relaxed prose-p:text-foreground prose-li:text-foreground prose-strong:text-foreground prose-headings:font-display prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-foreground prose-pre:my-0 prose-pre:bg-transparent prose-pre:p-0 prose-code:before:content-none prose-code:after:content-none prose-a:text-nvidia-green prose-a:no-underline hover:prose-a:underline">
+                <ReactMarkdown remarkPlugins={[remarkGfm, [remarkSourceCitations, message.sources]]} rehypePlugins={[rehypeStreamingWords]} components={components}>
+                  {displayContent}
                 </ReactMarkdown>
-              </div>
-            ) : (
-              <StickerBusy mode="generating" />
-            )}
+            </div>
           </div>
         )}
 
-        {showActions && message.content && !isThinking && (
-          <div className="mt-0.5 flex items-center gap-0.5">
+        {(hasActions || (!streaming && !!message.sources?.length)) && (
+          <SourcesDisclosure sources={!streaming ? message.sources ?? [] : []}>
+            {hasActions && <>
             <button
               type="button"
               onClick={handleCopy}
-              className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+              className={styles.actionButton}
+              aria-label={copied ? "Copied" : "Copy"}
               title={copied ? "Copied" : "Copy"}
             >
               {copied ? (
@@ -259,13 +283,15 @@ export function MessageBubble({ message, onRetry, showActions, streaming = false
               <button
                 type="button"
                 onClick={onRetry}
-                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
-                title="Try again"
+                disabled={retryDisabled}
+                className={styles.actionButton}
+                aria-label="Try again"
+                title={retryDisabled ? "Wait for the response to finish before retrying" : "Try again"}
               >
                 <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
               </button>
             )}
-            {message.evalCount && message.evalDurationMs && (
+            {typeof message.evalCount === "number" && typeof message.evalDurationMs === "number" && message.evalDurationMs > 0 && (
               <div className="ml-1.5 flex items-center gap-2.5 font-mono text-[11px] tabular-nums text-muted">
                 <span className="inline-flex items-center gap-1">
                   <Clock className="h-3 w-3" />
@@ -280,7 +306,8 @@ export function MessageBubble({ message, onRetry, showActions, streaming = false
                 </span>
               </div>
             )}
-          </div>
+            </>}
+          </SourcesDisclosure>
         )}
       </div>
     </div>

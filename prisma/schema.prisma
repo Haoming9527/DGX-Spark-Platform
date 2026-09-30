@@ -20,6 +20,9 @@ model User {
   disabledAt   DateTime? @map("disabled_at") @db.Timestamptz(6)
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   apiKeys      ApiKey[]
+  mcpConnections McpConnection[]
+  mcpOAuthStates McpOAuthState[]
+  mcpCalls McpCall[]
 
   @@map("users")
 }
@@ -69,4 +72,51 @@ model RateLimitBucket {
 
   @@index([expiresAt], map: "idx_rate_limit_buckets_expires_at")
   @@map("rate_limit_buckets")
+}
+
+model McpConnection {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  name         String   @db.VarChar(100)
+  description  String   @default("") @db.VarChar(500)
+  url          String   @db.VarChar(2048)
+  auth         String   @db.VarChar(10)
+  credentials  String
+  revision     Int      @default(0)
+  connectedAt  DateTime? @map("connected_at") @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauthStates  McpOAuthState[]
+  calls        McpCall[]
+
+  @@index([userId], map: "idx_mcp_connections_user")
+  @@map("mcp_connections")
+}
+
+model McpOAuthState {
+  stateHash    String @id @map("state_hash") @db.VarChar(64)
+  userId       String @map("user_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+  sessionHash  String @map("session_hash") @db.VarChar(64)
+  payload      String
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz(6)
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection   McpConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt], map: "idx_mcp_oauth_states_expiry")
+  @@map("mcp_oauth_states")
+}
+
+model McpCall {
+  requestId    String @map("request_id") @db.Uuid
+  userId       String @map("user_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz(6)
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection   McpConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, requestId])
+  @@index([expiresAt], map: "idx_mcp_calls_expiry")
+  @@map("mcp_calls")
 }

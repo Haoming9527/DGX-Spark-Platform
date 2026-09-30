@@ -35,6 +35,9 @@ A separate Linux server hosts the gateway so power controls remain reachable whe
 ## What you can do
 
 - **Chat with local models** — streamed responses, model selection, reasoning output for supported models, and browser-supported voice input.
+- **Choose thinking effort** — light mode answers faster; **Thinking** adds deeper reasoning and more research checks. History, tool evidence, and output are capped; old reasoning is not resent. Ollama retains its configured context size.
+- **Search the web** — tool-capable models search when needed and read relevant pages. Select **+ → Search** to require a search. DuckDuckGo needs no API key; queries go to DuckDuckGo and page reads contact source websites. Answers include source citations; blocked or JavaScript-only pages may provide snippets only.
+- **Connect MCP tools** — add your own servers, choose authentication, and approve each tool call in web chat.
 - **Use your own clients** — an OpenAI-compatible API with personal `dgx_sk_*` keys, key management, and usage reporting.
 - **Manage access** — invite-gated signup, session authentication, user administration, and model restrictions.
 - **Monitor infrastructure** — live power, voltage, current, and energy readings from Athom/Tasmota plugs.
@@ -192,11 +195,7 @@ Generate each service secret separately, for example with `openssl rand -hex 32`
 
 ### 2. Prepare the database
 
-For a **new, empty database**, run [schema.sql](schema.sql) in Neon's SQL editor.
-
-For an **existing installation adding operators**, apply [the operator-role migration](sql/migrations/20260928_operator_role.sql) before assigning the new role. Updating application code alone does not change PostgreSQL's existing role constraint.
-
-Existing installations must also apply [the rate-limit migration](sql/migrations/20260929_rate_limit_buckets.sql) before deploying the updated frontend. Login, signup, and chat use shared database counters; if the rate-limit store is unavailable, those requests fail closed. The migration adds a table and index without changing accounts or passwords.
+Run [schema.sql](schema.sql) in Neon's SQL editor **before deploying**, for both new and existing installations. It can be rerun: it preserves data, updates the operator-role constraint, and creates missing rate-limit and MCP tables in one transaction. Building the app does not update the database.
 
 An error containing `23514` and `users_role_check` while assigning `operator` means that constraint still needs updating. Do not reset an existing database to resolve it.
 
@@ -239,6 +238,22 @@ npm start
 Set both `INFERENCE_GATEWAY_URL` and `INFRA_GATEWAY_URL` to a gateway address reachable by the **Next.js server**. Use `http://127.0.0.1:50080` only when Next.js can reach the gateway there, such as on the same machine or through an SSH port forward. A frontend hosted on Vercel needs the public HTTPS gateway URL.
 
 For Vercel, first set up the gateway's HTTPS route using [Public deployment](#public-deployment). Import your fork with the repository root as the project directory, copy the root `.env` settings into the project's environment settings, and deploy. Do not use `gateway/` as the frontend project root. Leave `TRUSTED_CLIENT_IP_HEADER` blank on Vercel.
+
+#### Optional: MCP connections
+
+Apply [schema.sql](schema.sql) first if upgrading an existing installation.
+
+Generate a key and save it as `MCP_ENCRYPTION_KEY` in the **frontend** environment:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Keep that key across deployments; it encrypts saved connection credentials. Deploy the frontend, sign in, then open **+ → MCP**. Add a public HTTPS Streamable HTTP server, choose **OAuth**, **No authentication**, **OAuth or no authentication**, or **Access token**, and select **Use in chat**. Choose a model with tool support. The model chooses relevant tools; each call requires approval.
+
+For OAuth, register `https://YOUR_FRONTEND_DOMAIN/api/mcp/oauth/callback` if the server needs a pre-registered client; enter its issuer and client ID under advanced settings. Otherwise automatic registration is used. Complete sign-in in the new tab, return to chat, and connect again.
+
+Connections are private to each account. OAuth state expires after 10 minutes; duplicate-call receipts expire after 24 hours and are cleaned during MCP use. Tool arguments and results are not stored in the database. Local/private URLs, stdio, legacy SSE, and OpenAI tunnel IDs are not supported. This feature uses the existing local inference flow; it does not migrate the public API to Responses.
 
 ### 5. Create the owner account and invite people
 
@@ -345,8 +360,7 @@ Image inputs accept base64/data URLs and direct public HTTP(S) image URLs on por
 app/                          Next.js pages, UI components, and API routes
 lib/                          Authentication, database access, and shared helpers
 prisma/                       Prisma schema and generated-client configuration
-schema.sql                    Initial PostgreSQL schema
-sql/migrations/               Targeted updates for existing databases
+schema.sql                    PostgreSQL setup and repeatable upgrades
 gateway/
   api/main.go                 Go HTTP server entry point
   api/internal/ai/            Inference, authentication, routing, and usage
@@ -372,7 +386,7 @@ docker compose logs --tail=50 api
 
 Preserve existing `.env` files and add new settings from the examples as needed. After changing gateway environment values, use `docker compose up -d api` to recreate the container; `docker compose restart` does not load those changes. Deploy frontend updates separately and apply any required database migrations.
 
-For a locally hosted frontend, run `npm ci`, `npm run build`, and restart its process. Apply missing migrations listed in [database setup](#2-prepare-the-database) before deploying.
+For a locally hosted frontend, apply [schema.sql](schema.sql), run `npm ci`, `npm run build`, and restart its process.
 
 For development, `npm run lint` checks the frontend. With a compatible local Go toolchain, run `go vet ./...` and `go build .` from `gateway/api/`.
 

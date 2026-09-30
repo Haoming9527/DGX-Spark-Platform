@@ -1,4 +1,6 @@
-import type { ThinkingMode } from "@/lib/modelThinking";
+import type { ThinkingMetadata, ThinkingMode } from "@/lib/modelThinking";
+import type { McpActivity, McpChatMessage } from "@/lib/mcpChat";
+import type { SearchSource } from "@/lib/searchEvidence";
 
 export interface Message {
   id: string;
@@ -9,18 +11,24 @@ export interface Message {
   isThinking?: boolean;
   evalCount?: number;
   evalDurationMs?: number;
+  searching?: boolean;
+  sources?: SearchSource[];
+  mcpActivity?: McpActivity[];
+  mcpStatus?: string;
+  mcpContext?: McpChatMessage[];
+  responseStartedAt?: number;
+  responseFinishedAt?: number;
+  responseStatus?: "running" | "complete" | "stopped" | "error";
 }
 
 export interface ModelItem {
   id: string;
   name: string;
   parameterSize?: string | null;
-  capabilities: string[];
-  thinking: boolean;
   thinkingMode?: ThinkingMode;
+  thinkingMetadata?: ThinkingMetadata;
   vision: boolean;
   tools: boolean;
-  embedding: boolean;
   audio: boolean;
 }
 

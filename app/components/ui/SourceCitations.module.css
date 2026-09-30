@@ -1,0 +1,55 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: min(24ch, 70vw);
+  margin-inline: 3px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--panel-hover);
+  color: var(--muted) !important;
+  vertical-align: baseline;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-decoration: none !important;
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition: color 150ms ease-out, background-color 150ms ease-out;
+  animation: cite-arrive 180ms ease-out;
+}
+.chip .mark { width: 12px; height: 12px; }
+.chipLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip:hover { background: var(--panel); color: var(--foreground) !important; }
+.chip:focus-visible, .toggle:focus-visible, .row:focus-visible { outline: 2px solid var(--foreground); outline-offset: 3px; }
+@keyframes cite-arrive { from { opacity: 0.45; } to { opacity: 1; } }
+
+.sources { min-width: 0; width: 100%; }
+.footer { display: flex; align-items: center; flex-wrap: wrap; gap: 3px 7px; min-width: 0; }
+.toggle { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; padding: 4px 2px; color: var(--muted); font-size: 12px; cursor: pointer; transition: color 150ms ease-out; }
+.toggle:hover { color: var(--foreground); }
+.stack { display: inline-flex; align-items: center; gap: 3px; }
+.mark { position: relative; display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; color: var(--muted); }
+.mark svg { width: 100%; height: 100%; }
+.favicon { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 120ms ease-out; }
+.favicon[data-loaded="true"] { opacity: 1; }
+.stack .mark { width: 14px; height: 14px; }
+.chevron { transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+.chevron[data-open="true"] { transform: rotate(180deg); }
+.reveal { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 240ms cubic-bezier(0.16, 1, 0.3, 1), opacity 150ms ease-out; }
+.reveal[data-open="true"] { grid-template-rows: 1fr; opacity: 1; }
+.clip { overflow: hidden; min-height: 0; }
+.list { display: grid; gap: 10px; min-width: 0; margin: 8px 0 10px; padding: 0; list-style: none; }
+.item { min-width: 0; animation: source-arrive 220ms ease-out both; }
+.row { display: flex; align-items: flex-start; gap: 8px; min-width: 0; padding: 2px 0; text-decoration: none; }
+a.row:hover .title { text-decoration: underline; text-underline-offset: 3px; }
+.row .mark { margin-top: 2px; }
+.description { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.title { color: var(--foreground); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.meta { color: var(--muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.arrow { color: var(--muted); flex: none; margin-top: 4px; margin-left: auto; }
+@keyframes source-arrive { from { opacity: 0; clip-path: inset(0 0 100% 0); } to { opacity: 1; clip-path: inset(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .chip, .item { animation: none; }
+  .reveal, .chevron, .favicon { transition: none; }
+}

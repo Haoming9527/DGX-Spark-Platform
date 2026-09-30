@@ -37,12 +37,6 @@ export function publicUser(account: Account) {
   };
 }
 
-export async function requireAdmin(userId: string): Promise<Account | null> {
-  const account = await loadAccount(userId);
-  if (!account || account.disabled || account.role !== "admin") return null;
-  return account;
-}
-
 export async function applyAdminUserPatch(
   id: string,
   data: { role?: UserRole; disabledAt?: Date | null },

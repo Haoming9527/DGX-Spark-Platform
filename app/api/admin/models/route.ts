@@ -1,7 +1,7 @@
 import { apiFailure, readJsonBody } from "@/lib/apiRequest";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdminRequest } from "@/lib/requireAdminRequest";
+import { requireAdminRequest } from "@/lib/requireAccount";
 import { gatewayAuthHeaders, requireInferenceGateway } from "@/lib/inferenceGateway";
 
 function normalizeModel(name: string): string {

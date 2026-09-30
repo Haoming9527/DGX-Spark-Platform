@@ -2,20 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
-/** Leave follow when this far from bottom; rejoin only when this close. */
+// Separate thresholds avoid toggling follow near the bottom.
 const UNPIN_PX = 100;
 const REPIN_PX = 40;
 
-/**
- * ChatGPT / Claude stick-scroll:
- * - Follow while pinned to the bottom.
- * - Wheel/touch up unpins immediately; streaming must not yank the viewport.
- * - Resume via ↓ button or scrolling within REPIN_PX of the bottom.
- * - Content growth is followed only via ResizeObserver (not per-token calls).
- */
 export function useChatStickScroll(
   scrollerRef: RefObject<HTMLElement | null>,
   contentRef: RefObject<HTMLElement | null>,
+  enabled = true,
 ) {
   const [stuckToBottom, setStuckToBottom] = useState(true);
   const stuckRef = useRef(true);
@@ -38,7 +32,7 @@ export function useChatStickScroll(
   );
 
   const followIfStuck = useCallback(() => {
-    if (!stuckRef.current) return;
+    if (!enabled || !stuckRef.current) return;
     if (rafRef.current != null) return;
     rafRef.current = window.requestAnimationFrame(() => {
       rafRef.current = null;
@@ -46,9 +40,8 @@ export function useChatStickScroll(
       if (!el || !stuckRef.current) return;
       el.scrollTop = el.scrollHeight;
     });
-  }, [scrollerRef]);
+  }, [scrollerRef, enabled]);
 
-  /** Send / retry / clear — pin and snap to latest. */
   const pinToBottom = useCallback(() => {
     setStuck(true);
     cancelPending();
@@ -57,7 +50,6 @@ export function useChatStickScroll(
     else followIfStuck();
   }, [cancelPending, followIfStuck, scrollerRef, setStuck]);
 
-  /** ↓ control — pin and smooth-scroll once. */
   const jumpToBottom = useCallback(() => {
     setStuck(true);
     const el = scrollerRef.current;
@@ -71,6 +63,7 @@ export function useChatStickScroll(
   }, [scrollerRef, setStuck]);
 
   useEffect(() => {
+    if (!enabled) return;
     const el = scrollerRef.current;
     const content = contentRef.current;
     if (!el) return;
@@ -86,7 +79,7 @@ export function useChatStickScroll(
       }
     };
 
-    // Unpin before any follow rAF can run — never gated on programmatic flags.
+    // Unpin before a pending animation frame can move the viewport.
     const onWheel = (e: WheelEvent) => {
       if (e.deltaY < 0) setStuck(false);
     };
@@ -122,7 +115,7 @@ export function useChatStickScroll(
       ro?.disconnect();
       cancelPending();
     };
-  }, [scrollerRef, contentRef, setStuck, followIfStuck, cancelPending]);
+  }, [scrollerRef, contentRef, setStuck, followIfStuck, cancelPending, enabled]);
 
   return { stuckToBottom, jumpToBottom, pinToBottom };
 }
