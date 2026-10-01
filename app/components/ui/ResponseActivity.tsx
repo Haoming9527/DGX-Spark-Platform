@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { ChevronDown, Globe, Plug } from "lucide-react";
+import { ChevronDown, Globe } from "lucide-react";
+import { McpIcon } from "./McpIcon";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Message } from "../../types/chat";
@@ -123,7 +124,7 @@ export function ResponseActivity({ message, streaming }: { message: Message; str
             </p>}
           </section>}
           {settledTools.length > 0 && <section className={styles.section} aria-label="Tool activity">
-            <h3 className={styles.sectionTitle}><Plug aria-hidden size={14} />Tools</h3>
+            <h3 className={styles.sectionTitle}><McpIcon width={14} height={14} />Tools</h3>
             <ul className={styles.tools}>{settledTools.map(tool => <li key={tool.id}>
               <span className={styles.toolName}>{tool.server} · {tool.name}</span>
               <span className={styles.toolStatus}>{tool.status}</span>

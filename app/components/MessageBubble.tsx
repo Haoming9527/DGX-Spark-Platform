@@ -16,6 +16,7 @@ import { copyWithSourceCitations, displayWithSourceCitations, remarkSourceCitati
 import { ResponseActivity } from "./ui/ResponseActivity";
 import { SourceChip, SourcesDisclosure } from "./ui/SourceCitations";
 import { MessageEditor } from "./ui/MessageEditor";
+import { FollowUps } from "./ui/FollowUps";
 import styles from "./MessageBubble.module.css";
 import { rehypeStreamingWords } from "@/lib/streamingMarkdown";
 
@@ -28,6 +29,8 @@ interface MessageBubbleProps {
   showActions?: boolean;
   streaming?: boolean;
   onToolDecision?: (id: string, approved: boolean) => void;
+  onFollowUp?: (prompt: string) => void;
+  followUpDisabled?: boolean;
 }
 
 function isProseMistakenForCode(code: string): boolean {
@@ -141,7 +144,7 @@ function markdownComponents(isDark: boolean, highlight: boolean, sources: Messag
   };
 }
 
-export function MessageBubble({ message, onRetry, retryDisabled = false, onEdit, editDisabled = false, showActions, streaming = false, onToolDecision }: MessageBubbleProps) {
+export function MessageBubble({ message, onRetry, retryDisabled = false, onEdit, editDisabled = false, showActions, streaming = false, onToolDecision, onFollowUp, followUpDisabled }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -308,6 +311,9 @@ export function MessageBubble({ message, onRetry, retryDisabled = false, onEdit,
             )}
             </>}
           </SourcesDisclosure>
+        )}
+        {!streaming && message.responseStatus === "complete" && onFollowUp && !!message.followUps?.length && (
+          <FollowUps prompts={message.followUps} onSelect={onFollowUp} disabled={followUpDisabled} />
         )}
       </div>
     </div>

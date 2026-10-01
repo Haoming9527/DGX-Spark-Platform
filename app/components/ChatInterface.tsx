@@ -12,7 +12,7 @@ import { LogoMark } from "./ui/LogoMark";
 import { splitAssistantText } from "../../lib/splitThinking";
 import { useChatStickScroll } from "./useChatStickScroll";
 import { readThinkingMetadata, selectThinkingControl, thinkingMode } from "@/lib/modelThinking";
-import { streamMcpChat } from "@/lib/mcpChat";
+import { streamMcpChat, suggestFollowUps } from "@/lib/mcpChat";
 import type { McpActivity } from "@/lib/mcpChat";
 import { sourceId } from "@/lib/searchEvidence";
 import { clipHarnessText, harnessBudget } from "@/lib/chatHarness";
@@ -66,6 +66,23 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
   const abortControllerRef = useRef<AbortController | null>(null);
   const activeResponseRef = useRef<string | null>(null);
   const toolApprovalRef = useRef<{ id: string; resolve: (approved: boolean) => void } | null>(null);
+  const suggestedResponseRef = useRef<string | null>(null);
+  const lastMessage = messages.at(-1);
+  const followUpId = lastMessage?.role === "assistant" && lastMessage.responseStatus === "complete" ? lastMessage.id : undefined;
+  const followUpAnswer = followUpId ? lastMessage?.content : undefined;
+  const followUpQuestion = followUpId ? messages.at(-2)?.content : undefined;
+
+  useEffect(() => {
+    if (isLoading || !selectedModel || !followUpId || !followUpAnswer?.trim() || suggestedResponseRef.current === followUpId) return;
+    suggestedResponseRef.current = followUpId;
+    const controller = new AbortController();
+    void suggestFollowUps(selectedModel, followUpQuestion ?? "", followUpAnswer, controller.signal).then(followUps => {
+      if (controller.signal.aborted || !followUps.length) return;
+      setMessages(prev => prev.map(message => message.id === followUpId && message.responseStatus === "complete"
+        ? { ...message, followUps } : message));
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [followUpId, followUpAnswer, followUpQuestion, isLoading, selectedModel, user?.id]);
 
   const { stuckToBottom, jumpToBottom, pinToBottom } = useChatStickScroll(
     chatScrollRef,
@@ -552,10 +569,8 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const text = input.trim();
-    const images = canSee ? pendingImages.map((p) => p.dataUrl) : [];
+  const sendMessage = async (content: string, images: string[] = [], clearComposer = false) => {
+    const text = content.trim();
     if ((!text && images.length === 0) || isLoading || activeResponseRef.current || !selectedModel) return;
     if (models.length > 0 && !models.some((m) => m.id === selectedModel)) {
       void fetchModels(true);
@@ -571,11 +586,18 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
     const history = [...messages, userMessage];
     const assistantMessageId = crypto.randomUUID();
 
-    setInput("");
-    setPendingImages([]);
+    if (clearComposer) {
+      setInput("");
+      setPendingImages([]);
+    }
     pinToBottom();
     setMessages([...history, { id: assistantMessageId, role: "assistant", content: "" }]);
     await streamAssistant(history, assistantMessageId);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await sendMessage(input, canSee ? pendingImages.map(image => image.dataUrl) : [], true);
   };
 
   const handleRetry = async (assistantId: string) => {
@@ -685,6 +707,8 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
                   onToolDecision={decideToolCall}
                   onRetry={message.role === "assistant" ? () => handleRetry(message.id) : undefined}
                   retryDisabled={isLoading || !selectedModel}
+                  onFollowUp={i === messages.length - 1 && message.role === "assistant" ? (prompt) => { void sendMessage(prompt); } : undefined}
+                  followUpDisabled={isLoading || !selectedModel}
                   onEdit={message.role === "user" && messages[i + 1]?.role === "assistant" && messages[i + 1]?.responseStatus !== "running"
                     ? (text) => handleEdit(message.id, text) : undefined}
                   editDisabled={isLoading || !selectedModel}

@@ -36,7 +36,7 @@ A separate Linux server hosts the gateway so power controls remain reachable whe
 
 - **Chat with local models** — streamed responses, model selection, reasoning output for supported models, and browser-supported voice input.
 - **Choose thinking effort** — light mode answers faster; **Thinking** adds deeper reasoning and more research checks. History, tool evidence, and output are capped; old reasoning is not resent. Ollama retains its configured context size.
-- **Search the web** — tool-capable models search when needed and read relevant pages. Select **+ → Search** to require a search. DuckDuckGo needs no API key; queries go to DuckDuckGo and page reads contact source websites. Answers include source citations; blocked or JavaScript-only pages may provide snippets only.
+- **Search the web** — models search when needed; **+ → Search** requires a search. [LangSearch](https://langsearch.com) returns source text and citations. Set `LANGSEARCH_KEY` on the server, including in Vercel. Source text is capped to keep context bounded.
 - **Connect MCP tools** — add your own servers, choose authentication, and approve each tool call in web chat.
 - **Use your own clients** — an OpenAI-compatible API with personal `dgx_sk_*` keys, key management, and usage reporting.
 - **Manage access** — invite-gated signup, session authentication, user administration, and model restrictions.
