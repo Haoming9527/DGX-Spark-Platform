@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useId } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Send, StopCircle, BrainCircuit, Mic, MicOff, ImagePlus, Plus, X, ChevronDown, Globe, Plug } from "lucide-react";
+import { Send, StopCircle, BrainCircuit, Mic, MicOff, ImagePlus, Plus, X, ChevronDown, Globe } from "lucide-react";
+import { McpIcon } from "./ui/McpIcon";
 import { ChatImage } from "../types/chat";
 import Image from "next/image";
 import type { ThinkingMode } from "@/lib/modelThinking";
@@ -449,7 +450,7 @@ export function ChatInput({
                 transition={{ duration: reduceMotion ? 0 : toolsOpen ? 0.32 : 0.2, ease: [0.22, 1, 0.36, 1] }}
                 aria-hidden={!toolsOpen}
                 inert={!toolsOpen}
-                className="custom-scrollbar min-w-0 overflow-x-auto"
+                className="min-w-0 overflow-hidden"
               >
                 <motion.div
                   initial={false}
@@ -516,7 +517,7 @@ export function ChatInput({
                   <motion.div variants={toolVariants} custom={3} className="flex">
                     <button type="button" onClick={onMcp} aria-label={`MCP connections${mcpCount ? `, ${mcpCount} selected` : ""}`} aria-haspopup="dialog" title="Connect MCP tools"
                       className={`${chip} ${mcpCount ? "!border-nvidia-green/50 !bg-nvidia-green/15 !text-foreground" : ""}`}>
-                      <Plug className="h-3.5 w-3.5" strokeWidth={2} />
+                      <McpIcon className="h-3.5 w-3.5" />
                       <span className="hidden @[600px]/composer:inline">MCP{mcpCount ? ` (${mcpCount})` : ""}</span>
                     </button>
                   </motion.div>

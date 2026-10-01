@@ -13,6 +13,7 @@ export interface Message {
   evalDurationMs?: number;
   searching?: boolean;
   sources?: SearchSource[];
+  followUps?: string[];
   mcpActivity?: McpActivity[];
   mcpStatus?: string;
   mcpContext?: McpChatMessage[];

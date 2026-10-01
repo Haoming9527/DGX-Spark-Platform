@@ -5,8 +5,8 @@ import { loadOptionalAccount } from "../../../lib/requireAccount";
 import { clearSessionCookie } from "../../../lib/auth";
 import { clientKey, takeRateLimit } from "../../../lib/rateLimit";
 import { ApiRequestError, apiFailure, readJsonBody } from "../../../lib/apiRequest";
-import { WEB_SEARCH_TOOL, READ_PAGE_TOOL } from "../../../lib/webSearchTool";
-import { harnessBudget, harnessClock, harnessPhasePrompt, PLAN_SCHEMA, REVIEW_SCHEMA } from "../../../lib/chatHarness";
+import { WEB_SEARCH_TOOL } from "../../../lib/webSearchTool";
+import { harnessBudget, harnessClock, harnessPhasePrompt, PLAN_SCHEMA, REVIEW_SCHEMA, FOLLOW_UP_SCHEMA } from "../../../lib/chatHarness";
 import { compactMessages, ContextBudgetError, estimateContextUnits, type ContextMessage } from "../../../lib/harnessContext";
 import { selectThinkingControl } from "../../../lib/modelThinking";
 
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
       (typeof thinkingControl !== "string" || !/^[a-zA-Z0-9_-]{1,32}$/.test(thinkingControl))) {
       throw new ApiRequestError(400, "Invalid model thinking level.");
     }
-    if (harnessPhase !== undefined && harnessPhase !== "plan" && harnessPhase !== "review") {
+    if (harnessPhase !== undefined && harnessPhase !== "plan" && harnessPhase !== "review" && harnessPhase !== "followups") {
       throw new ApiRequestError(400, "Invalid chat planning step.");
     }
     if (timeZone !== undefined && (typeof timeZone !== "string" || timeZone.length > 100)) {
@@ -140,11 +140,11 @@ export async function POST(req: NextRequest) {
       if (req.headers.get("origin") !== req.nextUrl.origin) {
         throw new ApiRequestError(403, "Web search chat requests must come from this website.");
       }
-      validatedTools = chatTools([...(validatedTools ?? []), WEB_SEARCH_TOOL, READ_PAGE_TOOL]);
+      validatedTools = chatTools([...(validatedTools ?? []), WEB_SEARCH_TOOL]);
     }
     const { base, apiKey } = inferenceKeyForAccount(account);
     const budget = harnessBudget(useReasoning === true);
-    const format = harnessPhase ? (harnessPhase === "plan" ? PLAN_SCHEMA : REVIEW_SCHEMA) : undefined;
+    const format = harnessPhase === "followups" ? FOLLOW_UP_SCHEMA : harnessPhase ? (harnessPhase === "plan" ? PLAN_SCHEMA : REVIEW_SCHEMA) : undefined;
     const context = webSearch || harnessPhase || timeZone !== undefined ? [{ role: "system", content: [
       harnessClock(timeZone as string | undefined), ...(harnessPhase ? [harnessPhasePrompt(harnessPhase)] : []),
     ].join("\n\n") }, ...messages] : messages;
@@ -155,13 +155,15 @@ export async function POST(req: NextRequest) {
       model: model || "qwen3.6:35b-a3b",
       messages: prepared.messages,
       stream: true,
-      options: { num_predict: harnessPhase ? budget.phaseTokens : budget.answerTokens,
+      options: { num_predict: harnessPhase === "followups" ? 256 : harnessPhase ? budget.phaseTokens : budget.answerTokens,
         ...(harnessPhase ? { temperature: 0 } : {}) },
     };
     if (harnessPhase) {
       payload.format = format;
     } else if (validatedTools) payload.tools = validatedTools;
-    payload.think = thinkingControl === undefined
+    payload.think = harnessPhase === "followups"
+      ? selectThinkingControl(String(payload.model), undefined, false)
+      : thinkingControl === undefined
       ? selectThinkingControl(String(payload.model), undefined, useReasoning === true)
       : thinkingControl;
 
@@ -169,7 +171,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: gatewayAuthHeaders(apiKey, { "Content-Type": "application/json" }),
       body: JSON.stringify(payload),
-      signal: AbortSignal.any([req.signal, AbortSignal.timeout(180000)]),
+      signal: AbortSignal.any([req.signal, AbortSignal.timeout(harnessPhase === "followups" ? 20000 : 180000)]),
     });
 
     if (!response.ok) {

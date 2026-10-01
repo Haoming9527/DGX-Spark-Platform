@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, Loader2, Plug, X } from "lucide-react";
+import { Check, Loader2, X } from "lucide-react";
+import { McpIcon } from "./ui/McpIcon";
 import type { McpActivity as Activity } from "../../lib/mcpChat";
 
 export function McpActivity({ activities, onDecision }: {
@@ -13,7 +14,7 @@ export function McpActivity({ activities, onDecision }: {
         {activity.status === "running" ? <Loader2 aria-hidden className="mt-0.5 h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" /> :
           activity.status === "completed" ? <Check aria-hidden className="mt-0.5 h-4 w-4 shrink-0" /> :
           activity.status === "declined" || activity.status === "cancelled" ? <X aria-hidden className="mt-0.5 h-4 w-4 shrink-0" /> :
-          <Plug aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />}
+          <McpIcon className="mt-0.5 h-4 w-4 shrink-0" />}
         <div className="min-w-0 flex-1">
           <p className="break-words font-semibold">{activity.server} · {activity.name}</p>
           <p className="mt-0.5 break-all text-xs text-muted">{new URL(activity.url).origin}</p>

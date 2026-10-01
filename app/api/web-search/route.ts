@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { search } from "duck-duck-scrape";
 import { loadOptionalAccount } from "../../../lib/requireAccount";
 import { clientKey, takeRateLimit } from "../../../lib/rateLimit";
 import { ApiRequestError, apiFailure, readJsonBody } from "../../../lib/apiRequest";
 import { unauthorizedResponse } from "../../../lib/auth";
-import { enrichSearchSources } from "../../../lib/webSearch";
-import { normalizeSourceUrl, sourceId, type SearchSource } from "../../../lib/searchEvidence";
+import { searchWeb } from "../../../lib/webSearchProvider";
 
 export const runtime = "nodejs";
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,23 +26,7 @@ export async function POST(req: NextRequest) {
     if (typeof query !== "string" || !query.trim() || query.length > 1000) {
       throw new ApiRequestError(400, "Enter a search question of up to 1,000 characters.");
     }
-    if ((search as typeof search & { htmlBackendVersion?: number }).htmlBackendVersion !== 1) {
-      console.error("DuckDuckGo patch missing. Run npm install.");
-      throw new ApiRequestError(503, "Web search is not configured.");
-    }
-    let result: Awaited<ReturnType<typeof search>>;
-    try {
-      const options: NonNullable<Parameters<typeof search>[2]> & { signal: AbortSignal } = { signal: req.signal };
-      result = await search(query.trim(), { backend: "html" }, options);
-    } catch {
-      throw new ApiRequestError(503, "DuckDuckGo could not be reached or blocked the search. This is a search service failure, not evidence that no results exist.");
-    }
-    const sources = new Map<string, SearchSource>();
-    for (const item of result.results.slice(0, 8)) {
-      const url = normalizeSourceUrl(item.url);
-      if (url && !sources.has(url)) sources.set(url, { id: sourceId(url), title: item.title, url, snippet: item.description, readStatus: "not_read" });
-    }
-    const evidence = await enrichSearchSources([...sources.values()], req.signal, query.trim());
+    const evidence = await searchWeb(query.trim(), req.signal);
     return NextResponse.json({
       query: query.trim(), sources: evidence, serverTime: new Date().toISOString(),
       ...(!evidence.length ? { message: "No results matched this query. Try a different query or source." } : {}),

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, ExternalLink, Loader2, Plug, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { ArrowLeft, ExternalLink, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { McpIcon } from "./ui/McpIcon";
 import type { McpAuth as Authentication, McpConnection as Connection, McpTool as Tool } from "@/lib/mcp/types";
 
 interface McpDialogProps {
@@ -197,7 +198,7 @@ export function McpDialog({ open, onClose, signedIn, onSignIn, selectedIds, onSe
       <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-border bg-panel px-5 py-4 sm:px-6">
         <div>
           <h2 id={`${id}-title`} className="flex items-center gap-2.5 text-xl font-bold">
-            <Plug className="h-5 w-5 shrink-0" aria-hidden="true" />
+            <McpIcon className="h-5 w-5 shrink-0" />
             {adding ? "Add MCP server" : "MCP servers"}
           </h2>
           <p id={`${id}-description`} className="mt-1 text-sm text-muted">Connect tools for this chat.</p>
