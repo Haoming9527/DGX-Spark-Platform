@@ -29,7 +29,7 @@ export function PiPowerPanel() {
       </h2>
       {error && (
         <p className="mt-3 text-sm text-muted" role="status">
-          {error.signIn ? <Link href="/auth" className="underline underline-offset-4">Sign in to view readings.</Link> : "Unable to read the plug. Retrying…"}
+          {error.signIn ? <Link href="/?auth=login&next=/admin/infra" className="underline underline-offset-4">Sign in to view readings.</Link> : "Unable to read the plug. Retrying…"}
         </p>
       )}
       <dl className="mt-6 grid grid-cols-1 gap-5 min-[420px]:grid-cols-3 min-[420px]:gap-4">

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChatImage, Message, ModelItem } from "../types/chat";
 import { Header } from "./Header";
@@ -39,7 +40,12 @@ export type ChatUser = {
   role?: string;
 };
 
-export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser | null }) {
+export function ChatInterface({ initialUser = null, authRequested = false, authReturnTo = "/" }: {
+  initialUser?: ChatUser | null;
+  authRequested?: boolean;
+  authReturnTo?: string;
+}) {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [useReasoning, setUseReasoning] = useState(false);
@@ -56,7 +62,7 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
   const [isSleeping, setIsSleeping] = useState(false);
   const [user, setUser] = useState<ChatUser | null>(initialUser);
   const [stickersReady, setStickersReady] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(authRequested);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
 
@@ -571,7 +577,7 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
 
   const sendMessage = async (content: string, images: string[] = [], clearComposer = false) => {
     const text = content.trim();
-    if ((!text && images.length === 0) || isLoading || activeResponseRef.current || !selectedModel) return;
+    if ((!text && images.length === 0) || isLoading || activeResponseRef.current || !selectedModel || isSleeping || isOffline) return;
     if (models.length > 0 && !models.some((m) => m.id === selectedModel)) {
       void fetchModels(true);
       return;
@@ -601,7 +607,7 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
   };
 
   const handleRetry = async (assistantId: string) => {
-    if (isLoading || activeResponseRef.current || !selectedModel) return;
+    if (isLoading || activeResponseRef.current || !selectedModel || isSleeping || isOffline) return;
     if (models.length > 0 && !models.some((m) => m.id === selectedModel)) {
       void fetchModels(true);
       return;
@@ -623,7 +629,7 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
 
   const handleEdit = async (userId: string, content: string) => {
     const text = content.trim();
-    if (!text || isLoading || activeResponseRef.current || !selectedModel) return;
+    if (!text || isLoading || activeResponseRef.current || !selectedModel || isSleeping || isOffline) return;
     if (models.length > 0 && !models.some((model) => model.id === selectedModel)) {
       void fetchModels(true);
       return;
@@ -706,12 +712,12 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
                   showActions={message.role === "assistant" && !(isLoading && isLastAssistant)}
                   onToolDecision={decideToolCall}
                   onRetry={message.role === "assistant" ? () => handleRetry(message.id) : undefined}
-                  retryDisabled={isLoading || !selectedModel}
+                  retryDisabled={isLoading || !selectedModel || isSleeping || isOffline}
                   onFollowUp={i === messages.length - 1 && message.role === "assistant" ? (prompt) => { void sendMessage(prompt); } : undefined}
-                  followUpDisabled={isLoading || !selectedModel}
+                  followUpDisabled={isLoading || !selectedModel || isSleeping || isOffline}
                   onEdit={message.role === "user" && messages[i + 1]?.role === "assistant" && messages[i + 1]?.responseStatus !== "running"
                     ? (text) => handleEdit(message.id, text) : undefined}
-                  editDisabled={isLoading || !selectedModel}
+                  editDisabled={isLoading || !selectedModel || isSleeping || isOffline}
                 />
               );
             })
@@ -724,6 +730,7 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
         input={input}
         setInput={setInput}
         isLoading={isLoading}
+        unavailable={isSleeping || isOffline}
         selectedModel={selectedModel}
         handleSubmit={handleSubmit}
         stopGeneration={stopGeneration}
@@ -733,9 +740,9 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
         setUseWebSearch={setUseWebSearch}
         onMcp={() => setIsMcpOpen(true)}
         mcpCount={selectedMcpIds.length}
-        canThink={canThink}
+        canThink={canThink && !isSleeping && !isOffline}
         thinkingMode={selectedThinkingMode}
-        canSee={canSee}
+        canSee={canSee && !isSleeping && !isOffline}
         pendingImages={pendingImages}
         setPendingImages={setPendingImages}
         showJumpLatest={messages.length > 0 && !stuckToBottom}
@@ -758,9 +765,14 @@ export function ChatInterface({ initialUser = null }: { initialUser?: ChatUser |
         {isAuthModalOpen && (
           <AuthModal
             isOpen={isAuthModalOpen}
-            onClose={() => setIsAuthModalOpen(false)}
+            onClose={() => {
+              setIsAuthModalOpen(false);
+              if (authRequested) router.replace("/");
+            }}
             onSuccess={(u) => {
               setUser(u);
+              setIsAuthModalOpen(false);
+              if (authRequested) router.replace(authReturnTo);
               void fetchModels();
             }}
           />

@@ -17,11 +17,11 @@ export default function PowerPage() {
       .then((response) => response.json())
       .then((data) => {
         if (controller.signal.aborted) return;
-        if (!data.authenticated) router.replace("/auth");
+        if (!data.authenticated) router.replace("/?auth=login&next=/power");
         else if (data.user?.role !== "admin" && data.user?.role !== "operator") router.replace("/");
         else setReady(true);
       })
-      .catch(() => { if (!controller.signal.aborted) router.replace("/auth"); });
+      .catch(() => { if (!controller.signal.aborted) router.replace("/?auth=login&next=/power"); });
     return () => controller.abort();
   }, [router]);
 

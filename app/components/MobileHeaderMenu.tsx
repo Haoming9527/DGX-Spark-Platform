@@ -13,10 +13,11 @@ interface MobileHeaderMenuProps {
   user: { role?: string } | null;
   clearChat: () => void;
   onLogout: () => void;
+  onAuthClick: () => void;
   onSidebarToggle?: () => void;
 }
 
-export function MobileHeaderMenu({ open, setOpen, onOpen, user, clearChat, onLogout, onSidebarToggle }: MobileHeaderMenuProps) {
+export function MobileHeaderMenu({ open, setOpen, onOpen, user, clearChat, onLogout, onAuthClick, onSidebarToggle }: MobileHeaderMenuProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
@@ -149,10 +150,10 @@ export function MobileHeaderMenu({ open, setOpen, onOpen, user, clearChat, onLog
                 Log out
               </button>
             ) : (
-              <Link href="/auth" onClick={close} className={rowClass}>
+              <button type="button" onClick={() => { close(); onAuthClick(); }} aria-haspopup="dialog" className={rowClass}>
                 <LogIn className="h-[18px] w-[18px] text-nvidia-green" aria-hidden="true" />
                 Log in
-              </Link>
+              </button>
             )}
           </motion.div>
         </motion.div>

@@ -43,9 +43,9 @@ export default function ManageApiKeysPage() {
       .then((r) => r.json())
       .then((d) => {
         if (d.authenticated) setUser(d.user);
-        else router.replace("/auth");
+        else router.replace("/?auth=login&next=/apikeys/manage");
       })
-      .catch(() => router.replace("/auth"))
+      .catch(() => router.replace("/?auth=login&next=/apikeys/manage"))
       .finally(() => setSessionLoading(false));
   }, [router]);
 
