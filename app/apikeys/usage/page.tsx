@@ -36,9 +36,9 @@ export default function ApiKeyUsagePage() {
       .then((r) => r.json())
       .then((d) => {
         if (d.authenticated) setUser(d.user);
-        else router.replace("/auth");
+        else router.replace("/?auth=login&next=/apikeys/usage");
       })
-      .catch(() => router.replace("/auth"))
+      .catch(() => router.replace("/?auth=login&next=/apikeys/usage"))
       .finally(() => setSessionLoading(false));
   }, [router]);
 

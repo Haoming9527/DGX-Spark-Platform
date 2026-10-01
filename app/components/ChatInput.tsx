@@ -39,6 +39,7 @@ interface ChatInputProps {
   input: string;
   setInput: (val: string | ((prev: string) => string)) => void;
   isLoading: boolean;
+  unavailable: boolean;
   selectedModel: string;
   handleSubmit: (e: React.FormEvent) => void;
   stopGeneration: () => void;
@@ -66,6 +67,7 @@ export function ChatInput({
   input,
   setInput,
   isLoading,
+  unavailable,
   selectedModel,
   handleSubmit,
   stopGeneration,
@@ -95,6 +97,10 @@ export function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
   const micNoticeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (unavailable) recognitionRef.current?.abort();
+  }, [unavailable]);
 
   const showMicNotice = (message: string) => {
     setMicNotice(message);
@@ -303,7 +309,7 @@ export function ChatInput({
     "!border-[#d97706]/55 !bg-[#d97706]/20 !text-[#b45309]";
   const chipVoiceOn =
     "!border-alert/55 !bg-alert/15 !text-alert";
-  const canSend = Boolean((input.trim() || pendingImages.length > 0) && selectedModel && !isLoading);
+  const canSend = Boolean((input.trim() || pendingImages.length > 0) && selectedModel && !isLoading && !unavailable);
   const toolVariants = {
     closed: {
       opacity: 0,
@@ -400,7 +406,7 @@ export function ChatInput({
 
           <div className="flex items-center justify-between gap-2 px-1 pb-0.5">
             <div
-              className="flex min-w-0 flex-1 items-center"
+              className="flex min-w-0 flex-1 items-center [&_button:disabled]:cursor-not-allowed [&_button:disabled]:!border-border [&_button:disabled]:!bg-panel-hover [&_button:disabled]:!text-muted [&_button:disabled]:!brightness-100 [&_button:disabled]:opacity-60"
               onKeyDown={(event) => {
                 if (event.key === "Escape" && toolsOpen) {
                   event.preventDefault();
@@ -412,6 +418,7 @@ export function ChatInput({
               <input
                 ref={fileInputRef}
                 type="file"
+                disabled={unavailable}
                 accept="image/png,image/jpeg,image/webp,image/gif"
                 multiple
                 className="hidden"
@@ -452,7 +459,8 @@ export function ChatInput({
                 inert={!toolsOpen}
                 className="min-w-0 overflow-hidden"
               >
-                <motion.div
+                <motion.fieldset
+                  disabled={unavailable}
                   initial={false}
                   animate={toolsOpen ? "open" : "closed"}
                   className="flex w-max items-center gap-1.5 py-1.5 pl-2.5 pr-1.5"
@@ -548,7 +556,7 @@ export function ChatInput({
                       )}
                     </button>
                   </motion.div>
-                </motion.div>
+                </motion.fieldset>
               </motion.div>
 
               <AnimatePresence>
@@ -583,7 +591,7 @@ export function ChatInput({
                 <button
                   type="submit"
                   disabled={!canSend}
-                  className="sticker-sm sticker-cta flex h-10 w-10 items-center justify-center transition-[filter] hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-exit disabled:cursor-not-allowed disabled:opacity-35"
+                  className="sticker-sm sticker-cta flex h-10 w-10 items-center justify-center transition-[filter] enabled:hover:brightness-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-exit disabled:cursor-not-allowed disabled:!border-border disabled:!bg-panel-hover disabled:!text-muted disabled:opacity-60"
                   title="Send Message"
                 >
                   <Send className="h-4 w-4" strokeWidth={2} />

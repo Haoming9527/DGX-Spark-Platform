@@ -49,6 +49,7 @@ export function Header({
   setSelectedModel,
   clearChat,
   user,
+  onAuthClick,
   onLogout,
   onSidebarToggle,
 }: HeaderProps) {
@@ -165,14 +166,16 @@ export function Header({
                 </button>
               </>
             ) : (
-              <Link
-                href="/auth"
+              <button
+                type="button"
+                onClick={onAuthClick}
+                aria-haspopup="dialog"
                 className="sticker-sm sticker-cta inline-flex h-9 cursor-pointer items-center gap-1.5 px-3.5 text-[13px] font-semibold transition-[filter] hover:brightness-105"
                 title="Log in"
               >
                 <LogIn className="h-3.5 w-3.5" strokeWidth={2.5} />
                 <span>Login</span>
-              </Link>
+              </button>
             )}
 
             <button
@@ -194,7 +197,7 @@ export function Header({
               disabled={modelsLoading || modelUnavailable}
               aria-label={`Select model: ${statusLabel || selectedModel || "No model selected"}`}
               aria-expanded={isDropdownOpen && !modelsLoading && !modelUnavailable}
-              className="sticker-sm flex h-11 w-full cursor-pointer items-center justify-between gap-2 px-3 text-[13px] font-medium text-foreground transition-[filter] hover:brightness-110 focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-foreground disabled:cursor-not-allowed disabled:opacity-60 lg:h-9 lg:w-[16rem]"
+              className="sticker-sm flex h-11 w-full cursor-pointer items-center justify-between gap-2 px-3 text-[13px] font-medium text-foreground transition-[filter] enabled:hover:brightness-110 focus-visible:!outline-2 focus-visible:!outline-offset-2 focus-visible:!outline-foreground disabled:cursor-not-allowed disabled:!bg-panel-hover disabled:!text-muted disabled:opacity-60 lg:h-9 lg:w-[16rem]"
               title={statusLabel || selectedModel || "Select model"}
             >
               {modelsLoading ? (
@@ -290,6 +293,7 @@ export function Header({
             user={user}
             clearChat={clearChat}
             onLogout={onLogout}
+            onAuthClick={onAuthClick}
             onSidebarToggle={onSidebarToggle}
           />
         </div>

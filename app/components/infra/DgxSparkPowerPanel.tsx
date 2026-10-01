@@ -80,7 +80,7 @@ export function DgxSparkPowerPanel() {
       </dl>
       {accessError && (
         <p className="mt-3 text-sm text-muted" role="status">
-          {accessError === "signed-out" ? <Link href="/auth" className="underline underline-offset-4">Sign in to control Spark power.</Link> :
+          {accessError === "signed-out" ? <Link href="/?auth=login&next=/power" className="underline underline-offset-4">Sign in to control Spark power.</Link> :
             "Your account no longer has access to Spark power controls."}
         </p>
       )}

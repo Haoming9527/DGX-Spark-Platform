@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Ticket, User, Mail, Lock, LogIn, UserPlus } from "lucide-react";
 import { LogoMark } from "./ui/LogoMark";
@@ -9,10 +9,9 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (user: { id: string; username: string; email: string; role?: string }) => void;
-  embedded?: boolean;
 }
 
-export function AuthModal({ isOpen, onClose, onSuccess, embedded = false }: AuthModalProps) {
+export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -20,6 +19,18 @@ export function AuthModal({ isOpen, onClose, onSuccess, embedded = false }: Auth
   const [referralCode, setReferralCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!isOpen || !dialog) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialog.showModal();
+    return () => {
+      dialog.close();
+      if (opener?.isConnected && !opener.matches(":disabled")) opener.focus({ preventScroll: true });
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -62,7 +73,6 @@ export function AuthModal({ isOpen, onClose, onSuccess, embedded = false }: Auth
       if (!res.ok) throw new Error(data.error || "Something went wrong.");
       if (!data.user) throw new Error("Login succeeded but no user returned.");
       onSuccess(data.user);
-      onClose();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "An error occurred.");
     } finally {
@@ -76,9 +86,9 @@ export function AuthModal({ isOpen, onClose, onSuccess, embedded = false }: Auth
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 8 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="sticker relative w-full max-w-[400px] overflow-hidden !rounded-[1.35rem]"
+      className="sticker relative flex max-h-[calc(100dvh_-_2rem)] w-full flex-col overflow-hidden !rounded-[1.35rem]"
     >
-      <div className="flex items-start justify-between gap-3 border-b border-[var(--sticker-edge)] px-5 pb-4 pt-5">
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--sticker-edge)] px-5 pb-4 pt-5">
         <div className="flex min-w-0 items-center gap-3">
           <LogoMark size={26} />
           <div className="min-w-0">
@@ -97,7 +107,6 @@ export function AuthModal({ isOpen, onClose, onSuccess, embedded = false }: Auth
             </AnimatePresence>
           </div>
         </div>
-        {!embedded && (
           <button
             type="button"
             onClick={onClose}
@@ -109,10 +118,9 @@ export function AuthModal({ isOpen, onClose, onSuccess, embedded = false }: Auth
               <span className="exit-sign-word !text-[0.9rem]">EXIT</span>
             </span>
           </button>
-        )}
       </div>
 
-      <div className="px-5 pb-5 pt-4">
+      <div className="custom-scrollbar min-h-0 overflow-y-auto overscroll-contain px-5 pb-5 pt-4">
         <div className="mb-4 flex flex-wrap gap-2">
           <button
             type="button"
@@ -278,14 +286,15 @@ export function AuthModal({ isOpen, onClose, onSuccess, embedded = false }: Auth
     </motion.div>
   );
 
-  if (embedded) {
-    return card;
-  }
-
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+    <dialog
+      ref={dialogRef}
+      aria-label={isLogin ? "Log in" : "Sign up"}
+      className="fixed m-auto max-h-none w-[calc(100%_-_2rem)] max-w-[400px] overflow-visible border-0 bg-transparent p-0 backdrop:bg-black/50"
+      onCancel={(event) => { event.preventDefault(); onClose(); }}
+    >
       {card}
-    </div>
+    </dialog>
   );
 }
 
