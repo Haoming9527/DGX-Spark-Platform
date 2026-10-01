@@ -17,10 +17,11 @@ export async function GET(req: NextRequest) {
     await finishAuthorization({ userId: account.id, sessionHash, state, code, responseIssuer, origin: req.nextUrl.origin, signal: req.signal });
     success = true;
   } catch { /* Never reflect OAuth query parameters or provider errors. */ }
-  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MCP authorization</title></head><body><main><h1>${success ? "MCP authorization complete" : "MCP authorization was not completed"}</h1><p>${success ? "Close this tab, return to your chat, and connect the server again." : "Close this tab and try connecting again from your chat. Your login must stay active in the same browser."}</p></main></body></html>`, {
-    status: success ? 200 : 400,
+  return new Response(null, {
+    status: 303,
     headers: {
-      "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store",
+      "Location": `/mcp/authorization?status=${success ? "complete" : "incomplete"}`,
+      "Cache-Control": "no-store",
       "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
       "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
     },
