@@ -185,7 +185,7 @@ export function McpDialog({ open, onClose, signedIn, onSignIn, selectedIds, onSe
       ref={dialog}
       aria-labelledby={`${id}-title`}
       aria-describedby={`${id}-description`}
-      className="sticker fixed m-auto max-h-[calc(100svh_-_2rem)] w-[calc(100%_-_2rem)] max-w-xl overflow-y-auto p-0 backdrop:bg-black/60"
+      className="sticker fixed m-auto max-h-[calc(100svh_-_2rem)] w-[calc(100%_-_2rem)] max-w-xl flex-col overflow-hidden p-0 open:flex backdrop:bg-black/60"
       onClose={() => {
         requests.current?.abort();
         setBusy(null);
@@ -195,7 +195,7 @@ export function McpDialog({ open, onClose, signedIn, onSignIn, selectedIds, onSe
         if (opener.current?.isConnected && !opener.current.matches(":disabled")) opener.current.focus();
       }}
     >
-      <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-border bg-panel px-5 py-4 sm:px-6">
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border bg-panel px-5 py-4 sm:px-6">
         <div>
           <h2 id={`${id}-title`} className="flex items-center gap-2.5 text-xl font-bold">
             <McpIcon className="h-5 w-5 shrink-0" />
@@ -208,7 +208,7 @@ export function McpDialog({ open, onClose, signedIn, onSignIn, selectedIds, onSe
         </button>
       </div>
 
-      <div className="px-5 py-5 sm:px-6">
+      <div className="min-h-0 overflow-y-auto px-5 py-5 sm:px-6">
         {!signedIn ? (
           <div className="py-3">
             <p className="text-sm leading-6 text-muted">Sign in to save your MCP servers and choose which tools to use.</p>
