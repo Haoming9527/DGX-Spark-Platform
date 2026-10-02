@@ -49,7 +49,7 @@ export function useSparkPower() {
       const readGeneration = generation.current;
       let timedOut = false;
       let failureMessage = "Could not read the Spark. Retrying…";
-      const deadline = window.setTimeout(() => { timedOut = true; controller.abort(); }, 12000);
+      const deadline = window.setTimeout(() => { timedOut = true; controller.abort(); }, 25000);
       const current = () => !stopped && readGeneration === generation.current;
       try {
         const response = await fetch("/api/infra/dgx-spark", { cache: "no-store", signal: controller.signal });
@@ -83,7 +83,7 @@ export function useSparkPower() {
       } catch {
         if (current() && (!controller.signal.aborted || timedOut)) {
           setSnapshot(null);
-          setError(failureMessage);
+          setError(timedOut ? "Spark status request timed out. Retrying…" : failureMessage);
         }
       } finally {
         window.clearTimeout(deadline);

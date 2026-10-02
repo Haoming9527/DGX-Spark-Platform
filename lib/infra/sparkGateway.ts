@@ -100,7 +100,7 @@ async function gatewayRequest(
   } catch {
     throw new SparkGatewayError("NOT_CONFIGURED", "The Spark gateway URL needs to be configured.", 503);
   }
-  const signal = AbortSignal.any([req.signal, AbortSignal.timeout(12000)]);
+  const signal = AbortSignal.any([req.signal, AbortSignal.timeout(action ? 12000 : 20000)]);
   let response: Response;
   try {
     response = await fetch(url, {
