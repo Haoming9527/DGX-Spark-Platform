@@ -236,17 +236,15 @@ func (c *Controller) Read(parent context.Context) Snapshot {
 	if c.busy() || c.ctx.Err() != nil || parent.Err() != nil {
 		return c.snapshot()
 	}
-	// Browser cancellation must not count as a hardware failure.
-	ctx, cancel := context.WithTimeout(c.ctx, 10*time.Second)
-	defer cancel()
 	select {
 	case c.slot <- struct{}{}:
 		defer func() { <-c.slot }()
-	case <-parent.Done():
-		return c.snapshot()
-	case <-ctx.Done():
+	default:
 		return c.snapshot()
 	}
+	// Give SSH its full budget; browser polls must not queue hardware checks.
+	ctx, cancel := context.WithTimeout(c.ctx, 15*time.Second)
+	defer cancel()
 	if c.busy() {
 		return c.snapshot()
 	}
