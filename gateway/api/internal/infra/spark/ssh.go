@@ -163,7 +163,7 @@ func (w *boundedOutput) Write(p []byte) (int, error) {
 }
 
 func (h *sparkHost) run(parent context.Context, command string, out any) error {
-	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 	conn, err := (&net.Dialer{Timeout: 3 * time.Second}).DialContext(ctx, "tcp", h.addr)
 	if err != nil {
