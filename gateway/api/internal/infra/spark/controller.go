@@ -428,7 +428,7 @@ func (c *Controller) powerOn(ctx context.Context, s meterConnection, op *Operati
 			c.state.PendingCommand, c.recovering = "", false
 			c.persistLocked()
 			c.mu.Unlock()
-			c.finish(op, "succeeded", "Spark is online. Shutdown will be available after five minutes of readiness.")
+			c.finish(op, "succeeded", "Spark is online.")
 			return
 		}
 		if err := c.wait(ctx, s.disconnected()); err != nil {
