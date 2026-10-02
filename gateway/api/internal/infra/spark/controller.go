@@ -121,10 +121,8 @@ func New(parent context.Context, cfg Config, gate *admission.Gate) *Controller {
 			c.setupError = strings.TrimSpace(c.setupError + " " + p)
 		}
 	}
-	// Honor persisted pauses even with broken SSH; leave unconfigured AI unaffected.
+	// Recover power operations without treating monitoring failures as shutdowns.
 	if c.setupError == "" || (cfg.ControlKey != "" && cfg.SSHAddr != "") {
-		// Recheck readiness before admitting inference after startup.
-		gate.Close("Checking Spark readiness after gateway startup. New AI requests are paused.")
 		j, state, err := openJournal(cfg.StateDir)
 		if err != nil {
 			c.storageFailedLocked()
@@ -144,11 +142,11 @@ func New(parent context.Context, cfg Config, gate *admission.Gate) *Controller {
 			c.operation = c.requests[state.LastOperation]
 			if c.recovering {
 				c.state.AdmissionClosed = true
-				gate.Close("Spark power recovery is in progress. New AI requests are paused.")
 			}
 			c.persistLocked()
 		}
 	}
+	c.syncAdmissionLocked()
 	// Recovery must progress without an open browser.
 	if c.host != nil && cfg.MeterError == "" {
 		c.workers.Add(1)
@@ -318,9 +316,10 @@ func (c *Controller) Start(action, requestID, actor string) (Operation, int, str
 	op := &Operation{ID: hex.EncodeToString(id[:]), RequestID: requestID, Action: action, Status: "running", Phase: "checking", Message: "Checking the Spark and its plug…", StartedAt: c.now().UTC(), actor: actor}
 	c.requests[key], c.operation, c.state.LastOperation = op, op, key
 	c.state.AdmissionClosed = true
-	c.admission.Close("Spark is shutting down or starting. New AI requests are paused.")
+	c.syncAdmissionLocked()
 	if !c.persistLocked() {
 		op.Status, op.Phase, op.Message = "failed", "failed", c.safetyError
+		c.syncAdmissionLocked()
 		return Operation{}, 503, "SAFETY_UNAVAILABLE", c.safetyError
 	}
 	response := *op

@@ -27,7 +27,6 @@ func (c *Controller) freshHostLocked() bool {
 }
 func (c *Controller) storageFailedLocked() {
 	c.safetyError = "Spark safety storage is unavailable. Check the persistent volume, permissions and controller lock before using power controls."
-	c.admission.Close("Spark safety recovery requires administrator attention. New AI requests are paused.")
 	slog.Error("spark_power_safety_storage_unavailable")
 }
 func (c *Controller) persistLocked() bool {
@@ -112,7 +111,6 @@ func (c *Controller) setReading(r meterReading) {
 		}
 		c.readySince, c.lastHostAt = time.Time{}, time.Time{}
 		c.machine = "unreachable"
-		c.admission.Close("Spark power is off. New AI requests are paused.")
 	} else {
 		c.offSince = time.Time{}
 		if !continuous {
@@ -152,7 +150,6 @@ func (c *Controller) observeHost(status hostStatus, err error) {
 		c.hostStatus = hostStatus{}
 		c.machine = "unreachable"
 		if c.journal != nil {
-			c.admission.Close("Spark is unavailable or shutting down. New AI requests are paused.")
 			if !c.state.AdmissionClosed {
 				c.state.AdmissionClosed = true
 				c.persistLocked()
@@ -188,7 +185,6 @@ func (c *Controller) unavailable(message string) {
 	c.readinessResetReason = "Timer restarted because plug readings were interrupted."
 	c.offSince, c.readySince, c.lastHostAt = time.Time{}, time.Time{}, time.Time{}
 	if c.journal != nil {
-		c.admission.Close("Spark status is unavailable. New AI requests are paused.")
 		if !c.state.AdmissionClosed {
 			c.state.AdmissionClosed = true
 			c.persistLocked()
@@ -196,6 +192,7 @@ func (c *Controller) unavailable(message string) {
 	}
 }
 func (c *Controller) reconcileLocked() {
+	defer c.syncAdmissionLocked()
 	if c.busyLocked() || c.journal == nil || c.safetyError != "" || c.ctx.Err() != nil {
 		return
 	}
@@ -203,18 +200,31 @@ func (c *Controller) reconcileLocked() {
 		return
 	}
 	if c.recovering && secondsRemaining(c.now(), c.readySince, minimumReady) > 0 {
-		c.admission.Close(c.recoveryMessageLocked())
 		return
 	}
 	if c.state.AdmissionClosed || c.state.PendingCommand != "" {
+		closed, pending := c.state.AdmissionClosed, c.state.PendingCommand
 		c.state.AdmissionClosed, c.state.PendingCommand = false, ""
 		if !c.persistLocked() {
+			c.state.AdmissionClosed, c.state.PendingCommand = closed, pending
 			return
 		}
 		slog.Info("spark_power_admission_reopened", "boot_id", c.hostStatus.BootID)
 	}
 	c.recovering = false
 	c.readinessResetReason = ""
+}
+
+// Monitoring and power-control cooldowns must not block inference.
+func (c *Controller) syncAdmissionLocked() {
+	if c.busyLocked() && c.operation.Action == "shutdown" {
+		c.admission.Close("Spark is shutting down. New AI requests are paused while active requests finish.")
+		return
+	}
+	if c.state.PendingCommand == "shutdown" || c.state.PendingCommand == "OFF" {
+		c.admission.Close("Spark shutdown was requested. Waiting for confirmed recovery before accepting new AI requests.")
+		return
+	}
 	c.admission.Open()
 }
 

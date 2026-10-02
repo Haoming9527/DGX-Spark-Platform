@@ -331,7 +331,7 @@ Safeguards include a three-minute minimum off interval, five minutes of authenti
 
 Calibrate the threshold for each installation; low wattage alone does not prove shutdown. Readings and operation progress are live, with no stored telemetry history.
 
-Use `host:port` for SSH. A `.local` hostname must resolve inside the gateway container; otherwise use a reserved LAN IP. “Spark unavailable” means SSH readiness could not be verified.
+Use `host:port` for SSH. A `.local` hostname must resolve inside the gateway container; otherwise use a reserved LAN IP. “Spark unavailable” means SSH readiness could not be verified. Monitoring failures and readiness cooldowns do not pause AI requests; requested shutdowns pause new requests while active requests finish. An uncertain shutdown stays paused until recovery is confirmed.
 
 ## OpenAI-compatible clients
 
