@@ -26,6 +26,9 @@ export function DgxSparkPowerPanel() {
   const opener = useRef<HTMLElement | null>(null);
   const [retryShutdown, setRetryShutdown] = useState(false);
   const running = operation?.status === "running";
+  const operationMessage = operation?.action === "on" && operation.status === "succeeded"
+    ? "Spark is online."
+    : operation?.message;
   const busy = submitting || running;
   const controlsBlocked = busy || Boolean(retryRequest) || Boolean(accessError);
   const shutdownConfirmationBlocked = busy || Boolean(accessError) ||
@@ -131,7 +134,7 @@ export function DgxSparkPowerPanel() {
         </div>
         <div className="mt-3 text-sm leading-6" role="status" aria-live="polite" aria-atomic="true">
           {submitting ? <p className="flex items-center gap-2"><Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />Sending request…</p> :
-            operation && <p className="flex items-start gap-2">{running && <Loader2 className="mt-1 h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />}<span>{operation.message}</span></p>}
+            operation && <p className="flex items-start gap-2">{running && <Loader2 className="mt-1 h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />}<span>{operationMessage}</span></p>}
           {running && <p className="mt-1 text-muted">Continues if you leave this page.</p>}
           {snapshot?.admission_blocked_reason && <p className="mt-1 text-muted">AI requests paused.</p>}
           {actionError && <p className="mt-2 text-muted">{actionError}</p>}
