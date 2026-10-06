@@ -110,12 +110,13 @@ func (c *Controller) setReading(r meterReading) {
 			c.offSince = now
 		}
 		c.readySince, c.lastHostAt = time.Time{}, time.Time{}
+		c.hostStatus = hostStatus{}
 		c.machine = "unreachable"
 	} else {
 		c.offSince = time.Time{}
-		if !continuous {
+		if !continuous && c.shutdownPendingLocked() {
 			if !c.readySince.IsZero() {
-				c.readinessResetReason = "Timer restarted because plug readings were interrupted."
+				c.readinessResetReason = "Shutdown recovery timer restarted because plug readings were interrupted."
 			}
 			c.readySince = time.Time{}
 		}
@@ -145,9 +146,12 @@ func (c *Controller) observeHost(status hostStatus, err error) {
 			}
 			c.hostReadError = message
 		}
-		c.readinessResetReason = "Timer restarted because a Spark readiness check failed."
-		c.readySince, c.lastHostAt = time.Time{}, time.Time{}
-		c.hostStatus = hostStatus{}
+		if c.shutdownPendingLocked() || (err == nil && !ready(status)) {
+			c.readinessResetReason = "Timer restarted because Spark readiness was interrupted."
+			c.readySince = time.Time{}
+			c.hostStatus = hostStatus{}
+		}
+		c.lastHostAt = time.Time{}
 		c.machine = "unreachable"
 		if c.journal != nil {
 			if !c.state.AdmissionClosed {
@@ -161,13 +165,16 @@ func (c *Controller) observeHost(status hostStatus, err error) {
 		slog.Info("spark_readiness_restored")
 		c.hostReadError = ""
 	}
-	continuous := c.freshHostLocked() && c.hostStatus.BootID == status.BootID
-	if status.UptimeSeconds != nil && c.hostStatus.UptimeSeconds != nil && *status.UptimeSeconds < *c.hostStatus.UptimeSeconds {
-		continuous = false
+	// A missed poll invalidates readiness, not elapsed time on the same boot.
+	continuous := c.hostStatus.BootID == status.BootID &&
+		status.UptimeSeconds != nil && c.hostStatus.UptimeSeconds != nil &&
+		*status.UptimeSeconds >= *c.hostStatus.UptimeSeconds
+	if c.shutdownPendingLocked() {
+		continuous = continuous && c.freshHostLocked()
 	}
 	if !continuous || c.readySince.IsZero() {
 		if !c.readySince.IsZero() {
-			c.readinessResetReason = "Timer restarted because readiness checks were interrupted or the Spark restarted."
+			c.readinessResetReason = "Timer restarted because the Spark restarted or readiness continuity could not be verified."
 		}
 		c.readySince = now
 	}
@@ -182,8 +189,11 @@ func (c *Controller) unavailable(message string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.reading, c.machine, c.readError = nil, "unknown", message
-	c.readinessResetReason = "Timer restarted because plug readings were interrupted."
-	c.offSince, c.readySince, c.lastHostAt = time.Time{}, time.Time{}, time.Time{}
+	c.offSince, c.lastHostAt = time.Time{}, time.Time{}
+	if c.shutdownPendingLocked() {
+		c.readinessResetReason = "Shutdown recovery timer restarted because plug readings were interrupted."
+		c.readySince = time.Time{}
+	}
 	if c.journal != nil {
 		if !c.state.AdmissionClosed {
 			c.state.AdmissionClosed = true
@@ -221,17 +231,24 @@ func (c *Controller) syncAdmissionLocked() {
 		c.admission.Close("Spark is shutting down. New AI requests are paused while active requests finish.")
 		return
 	}
-	if c.state.PendingCommand == "shutdown" || c.state.PendingCommand == "OFF" {
+	if c.shutdownPendingLocked() {
 		c.admission.Close("Spark shutdown was requested. Waiting for confirmed recovery before accepting new AI requests.")
 		return
 	}
 	c.admission.Open()
 }
 
+func (c *Controller) shutdownPendingLocked() bool {
+	return c.state.PendingCommand == "shutdown" || c.state.PendingCommand == "OFF"
+}
+
 // Display the controller's monotonic recovery timer.
 func (c *Controller) recoveryMessageLocked() string {
 	seconds := secondsRemaining(c.now(), c.readySince, minimumReady)
-	message := fmt.Sprintf("Checking Spark stability: %d:%02d remaining of 5 minutes.", seconds/60, seconds%60)
+	message := fmt.Sprintf("Shutdown cooldown: %d:%02d remaining.", seconds/60, seconds%60)
+	if c.shutdownPendingLocked() {
+		message = fmt.Sprintf("Checking shutdown recovery: %d:%02d remaining of 5 minutes.", seconds/60, seconds%60)
+	}
 	if c.readinessResetReason != "" {
 		message += " " + c.readinessResetReason
 	}
