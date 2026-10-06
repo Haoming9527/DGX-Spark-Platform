@@ -16,14 +16,15 @@ import (
 )
 
 const (
-	sampleInterval   = 2 * time.Second
-	offObservation   = 60 * time.Second
-	shutdownDeadline = 10 * time.Minute
-	startupDeadline  = 5 * time.Minute
-	drainDeadline    = 5 * time.Minute
-	minimumOff       = 3 * time.Minute
-	minimumReady     = 5 * time.Minute
-	observationGap   = 8 * time.Second
+	sampleInterval    = 2 * time.Second
+	offObservation    = 60 * time.Second
+	shutdownDeadline  = 10 * time.Minute
+	startupDeadline   = 5 * time.Minute
+	drainDeadline     = 5 * time.Minute
+	minimumOff        = 3 * time.Minute
+	minimumReady      = 5 * time.Minute
+	statusReadTimeout = 15 * time.Second
+	observationGap    = statusReadTimeout + sampleInterval + 3*time.Second
 )
 
 type Operation struct {
@@ -197,6 +198,9 @@ func (c *Controller) snapshotLocked() Snapshot {
 	} else {
 		s.MachineStatus = "unknown"
 	}
+	if s.MachineStatus == "online" && !c.freshHostLocked() {
+		s.MachineStatus = "unknown"
+	}
 	if c.operation != nil {
 		op := *c.operation
 		s.Operation = &op
@@ -241,7 +245,7 @@ func (c *Controller) Read(parent context.Context) Snapshot {
 		return c.snapshot()
 	}
 	// Give SSH its full budget; browser polls must not queue hardware checks.
-	ctx, cancel := context.WithTimeout(c.ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(c.ctx, statusReadTimeout)
 	defer cancel()
 	if c.busy() {
 		return c.snapshot()
@@ -283,7 +287,7 @@ func (c *Controller) Read(parent context.Context) Snapshot {
 	return c.snapshot()
 }
 
-// Start persists acceptance and closes inference admission before returning.
+// Start persists acceptance and pauses new inference only for shutdown.
 func (c *Controller) Start(action, requestID, actor string) (Operation, int, string, string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -261,8 +261,11 @@ shutdown. A low reading or failed network connection alone never authorizes cuto
 
 After confirming the plug is off, the gateway requires **three minutes of
 observed off time** before another power-on. After authenticated readiness for a
-Spark boot, it requires **five minutes of observed ready time** before allowing
-shutdown. These are precautionary platform policies, not NVIDIA-certified timing
+Spark boot, it requires a **five-minute cooldown** before allowing shutdown.
+Missed checks block shutdown until fresh plug and SSH readings return. The countdown
+is retained when the authenticated boot ID matches and uptime has not decreased;
+confirmed power-off, reboot or a non-ready OS state restarts it.
+These are precautionary platform policies, not NVIDIA-certified timing
 requirements or a guarantee of hardware lifespan. There is no administrator bypass.
 
 Accepting a shutdown request immediately closes admission to **new inference
@@ -272,10 +275,10 @@ the shutdown operation is cancelled and admission reopens; no OS shutdown or
 relay command is sent. The shutdown-verification timeout starts only when the OS
 shutdown request is sent, separately from this five-minute drain period.
 
-Admission stays closed during acknowledged shutdown, power-off and startup.
-It reopens after authenticated readiness. If the gateway restarts during shutdown,
-admission only reopens after five continuous minutes of authenticated readiness
-for one boot. Readings, authentication, model permissions, model listing and health
+Only a requested shutdown pauses inference; monitoring failures, startup and normal
+cooldowns do not. An unresolved shutdown requires five continuous minutes of
+authenticated readiness for one boot before admission reopens, including after a
+gateway restart. Readings, authentication, model permissions, model listing and health
 endpoints remain available while inference is blocked.
 
 Power-on confirms the relay before waiting for authenticated SSH readiness. After
@@ -329,8 +332,8 @@ Keep independent plug timers/rules disabled and restrict direct MQTT/plug access
 The named volume stores `safety.json`, a small versioned JSON safety journal,
 and the process-lock file `controller.lock`, not telemetry history.
 It records command intentions before mutations, operation results and request IDs.
-State updates are atomic and synchronized to disk. Disk errors block controls and
-pause new inference while readings remain available. There is no Neon dependency
+State updates are atomic and synchronized to disk. Disk errors block power controls;
+an unresolved shutdown keeps inference paused. There is no Neon dependency
 for this coordination.
 
 After restart, unfinished operations become interrupted and are never resumed or
@@ -339,12 +342,10 @@ saved wall-clock timestamps cannot shorten it. Unknown relay-command delivery is
 reconciled with read-only queries. Corrupt state blocks control rather than silently
 starting over. Do not run `docker compose down -v`, which removes the safety volume.
 
-Every configured gateway startup pauses new inference until fresh Spark readiness
-is confirmed. With a new or missing journal, including the first deployment of this
-update, allow five continuous minutes of confirmed readiness before AI requests
-and shutdown controls become available. A clean restart with previously open
-admission can reopen AI after the first fresh ready check; shutdown still observes
-its full five-minute interval.
+Gateway startup starts a new five-minute shutdown cooldown after the first ready
+check. AI requests remain available unless a recorded shutdown is unresolved.
+Uncertain shutdown recovery still requires uninterrupted readiness; ordinary
+monitoring errors do not reset the same-boot cooldown.
 
 For a state-directory error, inspect `docker compose logs --tail=100 api` and the
 volume mount/ownership; the directory must belong to UID `65532` and be writable.

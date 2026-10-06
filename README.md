@@ -327,7 +327,7 @@ Power-on restores AC through the plug; enable **Auto Boot** in the Spark's UEFI.
 
 **Shut down & power off** blocks new gateway inference and gives active requests up to five minutes to finish. It then requests graceful SSH shutdown and requires acknowledgement, SSH unavailability, and 60 continuous seconds of fresh readings at or below the calibrated off-state wattage before cutting power. Failed checks cancel cutoff; uncertain relay commands are not blindly retried.
 
-Safeguards include a three-minute minimum off interval, five minutes of authenticated readiness before shutdown, persistent operation records, and restart recovery without command replay. Use the maintenance lock or shutdown inhibitors for work outside the gateway.
+Safeguards include a three-minute minimum off interval, a five-minute cooldown from authenticated readiness for each boot, persistent operation records, and restart recovery without command replay. Missed monitoring checks block shutdown until fresh readings return; they do not restart the cooldown for the same verified boot. Use the maintenance lock or shutdown inhibitors for work outside the gateway.
 
 Calibrate the threshold for each installation; low wattage alone does not prove shutdown. Readings and operation progress are live, with no stored telemetry history.
 
