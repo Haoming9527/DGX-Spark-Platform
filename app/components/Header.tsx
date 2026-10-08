@@ -65,7 +65,7 @@ export function Header({
       : isSleeping
         ? "Sleeping"
         : models.length === 0
-          ? "No models"
+          ? "No chat models available"
           : null;
 
   const ledState = modelsLoading

@@ -107,9 +107,11 @@ func (u *usageCapture) finish() {
 func (u *usageCapture) parse(raw []byte) {
 	var response struct {
 		Usage *struct {
-			Prompt     int64 `json:"prompt_tokens"`
-			Completion int64 `json:"completion_tokens"`
-			Total      int64 `json:"total_tokens"`
+			Prompt     int64  `json:"prompt_tokens"`
+			Completion int64  `json:"completion_tokens"`
+			Total      int64  `json:"total_tokens"`
+			Input      *int64 `json:"input_tokens"`
+			Output     *int64 `json:"output_tokens"`
 		} `json:"usage"`
 		Prompt     *int64 `json:"prompt_eval_count"`
 		Completion *int64 `json:"eval_count"`
@@ -120,6 +122,15 @@ func (u *usageCapture) parse(raw []byte) {
 	var tokens tokenUsage
 	if response.Usage != nil {
 		tokens = tokenUsage{response.Usage.Prompt, response.Usage.Completion, response.Usage.Total}
+		if response.Usage.Input != nil || response.Usage.Output != nil {
+			tokens = tokenUsage{}
+			if response.Usage.Input != nil {
+				tokens.Prompt = *response.Usage.Input
+			}
+			if response.Usage.Output != nil {
+				tokens.Completion = *response.Usage.Output
+			}
+		}
 	} else if response.Prompt != nil || response.Completion != nil {
 		if response.Prompt != nil {
 			tokens.Prompt = *response.Prompt

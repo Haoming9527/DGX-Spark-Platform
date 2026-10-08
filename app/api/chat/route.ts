@@ -19,7 +19,7 @@ function reply(res: Response, clearCookie: boolean) {
 }
 
 async function readUpstreamError(response: Response, requestSignal: AbortSignal) {
-  if (!response.body) return "";
+  if (!response.body) return { message: "", code: "" };
   const signal = AbortSignal.any([requestSignal, AbortSignal.timeout(3000)]);
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -42,11 +42,12 @@ async function readUpstreamError(response: Response, requestSignal: AbortSignal)
   const text = Buffer.concat(chunks, size).toString("utf8");
   try {
     const data = JSON.parse(text);
-    if (typeof data.error === "string") return data.error;
-    if (typeof data.error?.message === "string") return data.error.message;
-    if (typeof data.message === "string") return data.message;
+    const code = typeof data.error?.code === "string" ? data.error.code : typeof data.code === "string" ? data.code : "";
+    if (typeof data.error === "string") return { message: data.error, code };
+    if (typeof data.error?.message === "string") return { message: data.error.message, code };
+    if (typeof data.message === "string") return { message: data.message, code };
   } catch {}
-  return text;
+  return { message: text, code: "" };
 }
 
 function chatTools(value: unknown) {
@@ -175,8 +176,15 @@ export async function POST(req: NextRequest) {
     });
 
     if (!response.ok) {
-      const upstream = await readUpstreamError(response, req.signal);
+      const upstreamError = await readUpstreamError(response, req.signal);
+      const upstream = upstreamError.message;
       const jsonHeaders = { "Content-Type": "application/json" };
+      if (response.status === 400 && upstreamError.code === "model_endpoint_mismatch") {
+        return reply(NextResponse.json({
+          error: "MODEL_CAPABILITY", capability: "chat",
+          message: "This model supports System One decisions. Use POST /v1/systemone, or choose a chat model.",
+        }, { status: 400 }), clearCookie);
+      }
       if ([530, 502, 401].includes(response.status)) {
         return reply(
           new Response(

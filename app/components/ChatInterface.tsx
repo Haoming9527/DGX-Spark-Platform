@@ -17,6 +17,7 @@ import { streamMcpChat, suggestFollowUps } from "@/lib/mcpChat";
 import type { McpActivity } from "@/lib/mcpChat";
 import { sourceId } from "@/lib/searchEvidence";
 import { clipHarnessText, harnessBudget } from "@/lib/chatHarness";
+import { isDecisionModel } from "@/lib/modelCapabilities";
 
 const McpDialog = dynamic(() => import("./McpDialog").then((m) => m.McpDialog));
 
@@ -77,18 +78,6 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
   const followUpId = lastMessage?.role === "assistant" && lastMessage.responseStatus === "complete" ? lastMessage.id : undefined;
   const followUpAnswer = followUpId ? lastMessage?.content : undefined;
   const followUpQuestion = followUpId ? messages.at(-2)?.content : undefined;
-
-  useEffect(() => {
-    if (isLoading || !selectedModel || !followUpId || !followUpAnswer?.trim() || suggestedResponseRef.current === followUpId) return;
-    suggestedResponseRef.current = followUpId;
-    const controller = new AbortController();
-    void suggestFollowUps(selectedModel, followUpQuestion ?? "", followUpAnswer, controller.signal).then(followUps => {
-      if (controller.signal.aborted || !followUps.length) return;
-      setMessages(prev => prev.map(message => message.id === followUpId && message.responseStatus === "complete"
-        ? { ...message, followUps } : message));
-    }).catch(() => {});
-    return () => controller.abort();
-  }, [followUpId, followUpAnswer, followUpQuestion, isLoading, selectedModel, user?.id]);
 
   const { stuckToBottom, jumpToBottom, pinToBottom } = useChatStickScroll(
     chatScrollRef,
@@ -176,7 +165,8 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
 
       if (data.models && Array.isArray(data.models)) {
         const loadedModels: ModelItem[] = data.models
-          .filter((m: { name: string }) => !m.name.toLowerCase().includes("embed"))
+          .filter((m: { name: string; capabilities?: unknown }) =>
+            !m.name.toLowerCase().includes("embed") && !isDecisionModel(m.name, m.capabilities))
           .map((m: { name: string; capabilities?: unknown; thinking?: unknown; details?: { parameter_size?: string } }) => {
             const caps = Array.isArray(m.capabilities)
               ? m.capabilities.map((c) => String(c).toLowerCase())
@@ -193,7 +183,7 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
             };
           });
         setIsOffline(false);
-        setIsSleeping(loadedModels.length === 0);
+        setIsSleeping(false);
         setModels(loadedModels);
         if (loadedModels.length > 0) {
           const preferred = "qwen3.6:35b-a3b";
@@ -219,6 +209,25 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
   };
 
   useEffect(() => {
+    if (isLoading || !selectedModel || !followUpId || !followUpAnswer?.trim() || suggestedResponseRef.current === followUpId) return;
+    suggestedResponseRef.current = followUpId;
+    const controller = new AbortController();
+    void suggestFollowUps(selectedModel, followUpQuestion ?? "", followUpAnswer, controller.signal).then(followUps => {
+      if (controller.signal.aborted || !followUps.length) return;
+      setMessages(prev => prev.map(message => message.id === followUpId && message.responseStatus === "complete"
+        ? { ...message, followUps } : message));
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted || !(error instanceof Error)) return;
+      if (("code" in error && error.code === "MODEL_UNAVAILABLE") ||
+        ("code" in error && error.code === "MODEL_CAPABILITY" && "capability" in error && error.capability === "chat")) {
+        setSelectedModel("");
+        void fetchModels(true);
+      }
+    });
+    return () => controller.abort();
+  }, [followUpId, followUpAnswer, followUpQuestion, isLoading, selectedModel, user?.id]);
+
+  useEffect(() => {
     fetchModels();
   }, []);
 
@@ -234,6 +243,7 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
   const thinkingControl = selectedThinkingMode === "none" ? null
     : selectThinkingControl(selectedModel, selectedCaps?.thinkingMetadata, useReasoning);
   const canSee = Boolean(selectedCaps?.vision);
+  const noChatModels = !modelsLoading && !isSleeping && !isOffline && models.length === 0;
 
   useEffect(() => {
     if (!canThink && useReasoning) setUseReasoning(false);
@@ -403,6 +413,10 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
         if (code === "OFFLINE") setIsOffline(true);
         if (code === "MODEL_UNAVAILABLE") void fetchModels(true);
         if (code === "MODEL_CAPABILITY") {
+          if (capability === "chat") {
+            setSelectedModel("");
+            void fetchModels(true);
+          }
           if (capability === "thinking") setUseReasoning(false);
           if (capability === "vision") setPendingImages([]);
         }
@@ -540,6 +554,10 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
         if (code === "SLEEPING") setIsSleeping(true);
         if (code === "OFFLINE") setIsOffline(true);
         if (code === "MODEL_UNAVAILABLE") void fetchModels(true);
+        if (code === "MODEL_CAPABILITY" && capability === "chat") {
+          setSelectedModel("");
+          void fetchModels(true);
+        }
         if (code === "MODEL_CAPABILITY" && capability === "thinking") setUseReasoning(false);
         if (code === "MODEL_CAPABILITY" && capability === "vision") setPendingImages([]);
         console.error("Chat Error:", error);
@@ -691,10 +709,10 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
                     <LogoMark size={24} />
                   </div>
                   <h2 className="font-display text-balance text-base font-bold uppercase tracking-[0.03em] sm:text-[1.35rem]">
-                    How can I help you today?
+                    {noChatModels ? "No chat models available" : "How can I help you today?"}
                   </h2>
                   <p className="mt-1.5 text-pretty text-[12px] leading-relaxed text-muted sm:mt-2 sm:text-[13px]">
-                    Local models on DGX Spark.
+                    {noChatModels ? "Choose a chat-capable model on your AI server. Decision models are available through the API." : "Local models on DGX Spark."}
                   </p>
                 </div>
               )}
@@ -730,7 +748,7 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
         input={input}
         setInput={setInput}
         isLoading={isLoading}
-        unavailable={isSleeping || isOffline}
+        unavailable={isSleeping || isOffline || !selectedModel}
         selectedModel={selectedModel}
         handleSubmit={handleSubmit}
         stopGeneration={stopGeneration}

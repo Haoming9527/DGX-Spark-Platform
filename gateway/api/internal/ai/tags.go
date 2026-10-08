@@ -2,6 +2,7 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -49,7 +50,7 @@ func liveModelListKind(r *http.Request) (string, bool) {
 	}
 }
 
-func writeLiveModelList(w http.ResponseWriter, ollaBase *url.URL, kind string, restricted map[string]struct{}, admin bool) {
+func writeLiveModelList(ctx context.Context, w http.ResponseWriter, ollaBase *url.URL, kind string, restricted map[string]struct{}, admin bool) {
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	models, err := fetchLiveOllamaModelsRaw(ollaBase)
 	if err != nil {
@@ -59,7 +60,7 @@ func writeLiveModelList(w http.ResponseWriter, ollaBase *url.URL, kind string, r
 	}
 	models = filterModelsByAllowlist(models, restricted, admin)
 	endpoints, _ := listHealthyOllamaEndpoints(ollaBase)
-	models = attachCapabilities(models, endpoints)
+	models = attachCapabilities(ctx, models, endpoints)
 	if kind == "openai" {
 		data := make([]map[string]any, 0, len(models))
 		for _, m := range models {
@@ -157,11 +158,7 @@ func fetchLiveOllamaModelsRaw(ollaBase *url.URL) ([]map[string]any, error) {
 	return out, nil
 }
 
-func attachCapabilities(models []map[string]any, endpoints []ollaEndpoint) []map[string]any {
-	ep, ok := firstShowEndpoint(endpoints)
-	if !ok {
-		return models
-	}
+func attachCapabilities(ctx context.Context, models []map[string]any, endpoints []ollaEndpoint) []map[string]any {
 	sem := make(chan struct{}, capFetchParallel)
 	var wg sync.WaitGroup
 	for i := range models {
@@ -172,9 +169,13 @@ func attachCapabilities(models []map[string]any, endpoints []ollaEndpoint) []map
 		wg.Add(1)
 		go func(i int, name string, tagged []string) {
 			defer wg.Done()
-			sem <- struct{}{}
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
 			defer func() { <-sem }()
-			entry := lookupCapabilities(ep, name, tagged)
+			entry := modelCapabilities(ctx, name, tagged, endpoints)
 			models[i]["capabilities"] = entry.caps
 			if len(entry.thinking) > 0 {
 				models[i]["thinking"] = entry.thinking
@@ -185,20 +186,36 @@ func attachCapabilities(models []map[string]any, endpoints []ollaEndpoint) []map
 	return models
 }
 
-func firstShowEndpoint(endpoints []ollaEndpoint) (ollaEndpoint, bool) {
-	for _, ep := range endpoints {
-		if strings.TrimSpace(ep.URL) != "" {
-			return ep, true
+func modelCapabilities(ctx context.Context, name string, tagged []string, endpoints []ollaEndpoint) capCacheEntry {
+	if len(endpoints) == 0 {
+		if u := strings.TrimSpace(os.Getenv("SG_API_ENDPOINT")); u != "" {
+			endpoints = []ollaEndpoint{{Name: "spark", URL: u}}
 		}
 	}
-	if u := strings.TrimSpace(os.Getenv("SG_API_ENDPOINT")); u != "" {
-		return ollaEndpoint{Name: "spark", URL: u}, true
+	for _, ep := range endpoints {
+		if ctx.Err() != nil {
+			break
+		}
+		if strings.TrimSpace(ep.URL) == "" {
+			continue
+		}
+		entry := lookupCapabilities(ctx, ep, name)
+		if entry.ok && len(entry.caps) > 0 {
+			return entry
+		}
 	}
-	return ollaEndpoint{}, false
+	if len(tagged) == 0 && decisionModel(name, nil) {
+		tagged = []string{"decision"}
+	}
+	if tagged == nil {
+		tagged = []string{}
+	}
+	return capCacheEntry{caps: tagged}
 }
 
-func lookupCapabilities(ep ollaEndpoint, name string, tagged []string) capCacheEntry {
-	if v, ok := capCache.Load(name); ok {
+func lookupCapabilities(ctx context.Context, ep ollaEndpoint, name string) capCacheEntry {
+	key := ep.URL + "\n" + normalizeModel(name)
+	if v, ok := capCache.Load(key); ok {
 		entry := v.(capCacheEntry)
 		ttl := capCacheTTL
 		if !entry.ok {
@@ -208,23 +225,21 @@ func lookupCapabilities(ep ollaEndpoint, name string, tagged []string) capCacheE
 			return entry
 		}
 	}
-	caps, thinking, err := fetchShowCapabilities(ep, name)
+	caps, thinking, err := fetchShowCapabilities(ctx, ep, name)
 	if err != nil {
-		if len(tagged) > 0 {
-			entry := capCacheEntry{caps: tagged, at: time.Now(), ok: true}
-			capCache.Store(name, entry)
-			return entry
+		if ctx.Err() != nil {
+			return capCacheEntry{}
 		}
 		log.Printf("show %s: %v", name, err)
 		entry := capCacheEntry{caps: []string{}, at: time.Now(), ok: false}
-		capCache.Store(name, entry)
+		capCache.Store(key, entry)
 		return entry
 	}
 	if caps == nil {
 		caps = []string{}
 	}
 	entry := capCacheEntry{caps: caps, thinking: thinking, at: time.Now(), ok: true}
-	capCache.Store(name, entry)
+	capCache.Store(key, entry)
 	return entry
 }
 
@@ -254,7 +269,7 @@ func capabilitiesFromModel(m map[string]any) []string {
 	}
 }
 
-func fetchShowCapabilities(ep ollaEndpoint, name string) ([]string, json.RawMessage, error) {
+func fetchShowCapabilities(ctx context.Context, ep ollaEndpoint, name string) ([]string, json.RawMessage, error) {
 	base, err := url.Parse(ep.URL)
 	if err != nil {
 		return nil, nil, err
@@ -264,7 +279,7 @@ func fetchShowCapabilities(ep ollaEndpoint, name string) ([]string, json.RawMess
 		return nil, nil, err
 	}
 	reqURL := base.ResolveReference(&url.URL{Path: "/api/show"})
-	req, err := http.NewRequest(http.MethodPost, reqURL.String(), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, err
 	}

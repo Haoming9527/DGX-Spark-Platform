@@ -13,6 +13,7 @@ services:
       SG_API_KEY: ${SG_API_KEY}
     volumes:
       - ./config/olla.yaml:/config/olla.yaml:ro
+      - ./config/profiles/ollama.yaml:/app/config/profiles/ollama.yaml:ro
     command: ["--config", "/config/olla.yaml"]
 
   api:
