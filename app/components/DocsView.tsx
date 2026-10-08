@@ -41,6 +41,7 @@ const navGroups = [
       { id: "streaming", label: "Streaming" },
       { id: "vision", label: "Vision" },
       { id: "embeddings", label: "Embeddings" },
+      { id: "systemone", label: "System One" },
       { id: "tools", label: "Tools & MCP" },
       { id: "structured", label: "Structured output" },
     ],
@@ -423,6 +424,46 @@ const res = await client.chat.completions.create({
 console.log(res.choices[0].message.content);`,
 };
 
+const systemOneSnippets = {
+  clef: `curl ${baseUrl}/v1/systemone \\
+  -H "Authorization: Bearer dgx_sk_your_key_here" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "clef",
+    "state": "The export button stopped working after the update.",
+    "questions": {
+      "team": {
+        "type": "choice",
+        "instructions": "Which team should handle this ticket?",
+        "criteria": {
+          "engineering": "Broken product features",
+          "accounts": "Billing or account changes",
+          "support": "General help using the product"
+        }
+      }
+    }
+  }'`,
+  "clef-flash": `curl ${baseUrl}/v1/systemone \\
+  -H "Authorization: Bearer dgx_sk_your_key_here" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "clef-flash",
+    "state": {"ticket": "The export button stopped working after the update."},
+    "questions": {
+      "regression": {
+        "type": "noul",
+        "instructions": "Does this describe a regression after an update?"
+      },
+      "impact": {
+        "type": "score",
+        "instructions": "How much does this issue prevent using the product?",
+        "criteria": ["Cosmetic only", "One feature unavailable", "Entire product unavailable"]
+      }
+    },
+    "keep_alive": "5m"
+  }'`,
+};
+
 const quickstartSnippets = {
   Python: chatSnippets.Python,
   JavaScript: chatSnippets.JavaScript,
@@ -494,6 +535,7 @@ export function DocsView() {
   const [embedLang, setEmbedLang] = useState<GuideLanguage>("Python");
   const [toolsLang, setToolsLang] = useState<"Python" | "JavaScript">("Python");
   const [structuredLang, setStructuredLang] = useState<"Python" | "JavaScript">("Python");
+  const [decisionModel, setDecisionModel] = useState<keyof typeof systemOneSnippets>("clef");
   const [models, setModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -640,7 +682,7 @@ export function DocsView() {
           id="overview"
           icon={<BookOpen className="h-5 w-5 text-nvidia-green" />}
           title="Overview"
-          description="DGX Spark exposes an OpenAI-compatible API at api.dgxspark.dev. Use your dgx_sk_ key for chat, embeddings, tools, and structured JSON. Vision input works on vision models. Image generation, audio, and video stay parked until those models are on Spark."
+          description="DGX Spark exposes an OpenAI-compatible API at api.dgxspark.dev. Use your dgx_sk_ key for chat, embeddings, tools, and structured JSON, or call System One for typed decisions. Vision input works on supported models."
         >
           <CopyField
             label="Base URL"
@@ -656,6 +698,7 @@ export function DocsView() {
               { href: "#vision", label: "Vision", hint: "Image understanding" },
               { href: "#tools", label: "Tools & MCP", hint: "Function calling loop" },
               { href: "#embeddings", label: "Embeddings", hint: "Vectors for RAG" },
+              { href: "#systemone", label: "System One", hint: "Decisions with Clef" },
             ].map((link) => (
               <a
                 key={link.href}
@@ -873,6 +916,52 @@ export function DocsView() {
         </DocSection>
 
         <DocSection
+          id="systemone"
+          icon={<ListChecks className="h-5 w-5 text-nvidia-green" />}
+          title="System One"
+          description="Clef and Clef Flash make typed decisions from text, JSON, or images. Use Ollama 0.35.1+ and POST /v1/systemone with your personal API key. These models stay in the API model list but are not chat models."
+        >
+          <GuideSteps
+            steps={[
+              {
+                title: "Request",
+                body: "Send model, state (a nonempty string, object, or array), and 1–64 named questions. Questions share the state and are evaluated independently. keep_alive is optional. The native alias is /olla/ollama/v1/systemone.",
+              },
+              {
+                title: "Question types",
+                body: "choice selects among 2–26 named criteria; noul returns the probability of true; score uses 2–26 descriptions ordered from lowest to highest and returns a weighted score on that zero-based scale.",
+              },
+              {
+                title: "Images and limits",
+                body: "Add images: [\"<raw base64>\"] for PNG, JPEG, or WebP images. URLs and data URLs are not accepted. The entire JSON body must fit within 64 KiB without images or 32 MiB with images, and within the model context window. Input is never truncated.",
+              },
+              {
+                title: "Response and usage",
+                body: "One JSON response contains model, answers, and usage.input_tokens / usage.output_tokens. Answers retain their question names; choice and score include probabilities and confidence. Zero output tokens is valid. Requests and tokens appear in your usage dashboard.",
+              },
+            ]}
+          />
+          <div className="mt-4">
+            <CodeTabs
+              languages={["clef", "clef-flash"]}
+              active={decisionModel}
+              onChange={setDecisionModel}
+              code={systemOneSnippets[decisionModel]}
+              copied={copiedText === `systemone-${decisionModel}`}
+              onCopy={() => handleCopy(systemOneSnippets[decisionModel], `systemone-${decisionModel}`)}
+            />
+          </div>
+          <Callout>
+            Both models support all three question types. System One does not accept chat messages,
+            streaming, tools, or generation controls. Chat and generation routes return
+            {" "}<code>model_endpoint_mismatch</code> for decision models. See the{" "}
+            <a className="underline underline-offset-2" href="https://docs.ollama.com/api/systemone" target="_blank" rel="noreferrer">
+              Ollama API reference
+            </a> for the full contract.
+          </Callout>
+        </DocSection>
+
+        <DocSection
           id="tools"
           icon={<Wrench className="h-5 w-5 text-nvidia-green" />}
           title="Tools & MCP"
@@ -949,7 +1038,7 @@ export function DocsView() {
             steps={[
               {
                 title: "Live today",
-                body: "Chat, streaming, vision-in, thinking (gated), tools/function calling, embeddings, structured JSON.",
+                body: "Chat, streaming, vision-in, thinking (gated), tools/function calling, embeddings, structured JSON, and System One decisions.",
               },
               {
                 title: "Waiting on models",

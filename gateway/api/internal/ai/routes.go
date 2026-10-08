@@ -37,7 +37,7 @@ func (s *Server) routes() http.Handler {
 				return
 			}
 			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-			writeLiveModelList(rec, ollaURL, kind, restricted, admin)
+			writeLiveModelList(r.Context(), rec, ollaURL, kind, restricted, admin)
 			if ident.keyID != "" && pool != nil {
 				go logUsage(context.Background(), pool, ident.keyID, rec.status, "", tokenUsage{})
 			}
@@ -66,7 +66,7 @@ func (s *Server) routes() http.Handler {
 		if err != nil {
 			var tooLarge *http.MaxBytesError
 			if errors.As(err, &tooLarge) {
-				writeOpenAIError(w, http.StatusRequestEntityTooLarge, "Request body exceeds 48 MiB.", "invalid_request_error", nil)
+				writeOpenAIError(w, http.StatusRequestEntityTooLarge, requestLimitMessage(tooLarge.Limit), "invalid_request_error", nil)
 			} else {
 				writeOpenAIError(w, http.StatusBadRequest, "Invalid request body: "+err.Error(), "invalid_request_error", nil)
 			}
@@ -95,6 +95,16 @@ func (s *Server) routes() http.Handler {
 			writeLocalModelNotFound(rec)
 		} else {
 			usageModel = requestedModel
+			if systemOnePath(r.URL.Path) {
+				proxy.ServeHTTP(rec, r)
+				return
+			}
+			if textGenerationPath(r.URL.Path) && decisionModelForRequest(r.Context(), ollaURL, requestedModel, gate.live) {
+				writeOpenAIError(rec, http.StatusBadRequest,
+					"This model supports System One decisions, not chat or text generation. Use POST /v1/systemone.",
+					"invalid_request_error", strPtr("model_endpoint_mismatch"))
+				return
+			}
 			if shouldInjectSystemPrompt(r) {
 				if !isRestrictedName(requestedModel, gate.restricted) {
 					if err := injectSystemPrompt(r, promptStore.get()); err != nil {

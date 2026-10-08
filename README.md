@@ -39,6 +39,7 @@ A separate Linux server hosts the gateway so power controls remain reachable whe
 - **Search the web** — models search when needed; **+ → Search** requires a search. [LangSearch](https://langsearch.com) returns source text and citations. Set `LANGSEARCH_KEY` on the server, including in Vercel. Source text is capped to keep context bounded.
 - **Connect MCP tools** — add your own servers, choose authentication, and approve each tool call in web chat.
 - **Use your own clients** — an OpenAI-compatible API with personal `dgx_sk_*` keys, key management, and usage reporting.
+- **Make typed decisions** — Clef and Clef Flash classify, estimate probabilities, and score through `/v1/systemone`, separate from chat.
 - **Manage access** — invite-gated signup, session authentication, user administration, and model restrictions.
 - **Monitor infrastructure** — live power, voltage, current, and energy readings from Athom/Tasmota plugs.
 - **Control the Spark** — power on remotely or request a graceful SSH shutdown followed by guarded plug cutoff.
@@ -352,7 +353,13 @@ curl https://api.dgxspark.dev/v1/models \
 
 Endpoint compatibility depends on the gateway and upstream model capabilities. See the application's `/documentation` page for usage examples.
 
-Image inputs accept base64/data URLs and direct public HTTP(S) image URLs on ports 80/443. Private-network destinations and redirects are rejected. PNG, JPEG, WebP, and GIF inputs are limited to 8 MiB and 40 megapixels each, with at most 32 images and 32 MiB of decoded image data per request. JSON requests are limited to 48 MiB. Model permissions apply to the JSON body sent upstream; conflicting query/body model names are rejected. The public gateway forwards supported inference routes only, not upstream administration routes.
+Chat image inputs accept base64/data URLs and direct public HTTP(S) image URLs on ports 80/443. Private-network destinations and redirects are rejected. PNG, JPEG, WebP, and GIF inputs are limited to 8 MiB and 40 megapixels each, with at most 32 images and 32 MiB of decoded image data per request. Chat JSON requests are limited to 48 MiB. Model permissions apply to the JSON body sent upstream; conflicting query/body model names are rejected. The public gateway forwards supported inference routes only, not upstream administration routes.
+
+### System One
+
+Use `POST /v1/systemone` with your personal API key, `model: "clef"` or `"clef-flash"`, `state`, and named `questions` of type `choice`, `noul`, or `score`. Requires Ollama 0.35.1+. Responses contain typed answers, probabilities, and token usage; these models are excluded from chat. See `/documentation#systemone` for authenticated cURL examples and the [Ollama contract](https://docs.ollama.com/api/systemone).
+
+System One accepts optional raw base64 PNG/JPEG/WebP images, not URLs. Requests are limited to 64 KiB without images or 32 MiB with images, including JSON and base64. It does not stream. The supplied Olla profile preserves v0.0.28 defaults and adds this endpoint; deploy both Compose services when updating.
 
 ## Repository layout
 
@@ -396,6 +403,6 @@ Code, documentation, bug reports, and hardware integrations are welcome. Open an
 
 ## License and attribution
 
-Released under the [MIT License](LICENSE).
+Project code is released under the [MIT License](LICENSE). The vendored Olla profile retains its [Apache-2.0 license](gateway/config/profiles/LICENSE.olla).
 
 DGX Spark Platform is a personal, non-commercial project and is **not affiliated with NVIDIA**. NVIDIA and DGX are referenced to describe hardware compatibility. Olla, Ollama, and the other dependencies remain the work of their respective maintainers.

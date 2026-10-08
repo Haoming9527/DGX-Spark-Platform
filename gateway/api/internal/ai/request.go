@@ -16,6 +16,7 @@ const maxRequestBytes = 48 << 20
 func inferencePath(path string) bool {
 	switch path {
 	case "/v1/chat/completions", "/v1/completions", "/v1/embeddings",
+		"/v1/systemone", "/olla/ollama/v1/systemone",
 		"/olla/proxy/v1/chat/completions", "/olla/proxy/v1/completions", "/olla/proxy/v1/embeddings",
 		"/olla/ollama/v1/chat/completions", "/olla/ollama/v1/completions", "/olla/ollama/v1/embeddings",
 		"/olla/ollama/api/chat", "/olla/ollama/api/generate", "/olla/ollama/api/embed", "/olla/ollama/api/embeddings":
@@ -32,7 +33,11 @@ func readRequestModel(w http.ResponseWriter, r *http.Request) (string, error) {
 	if encoding := r.Header.Get("Content-Encoding"); encoding != "" && encoding != "identity" {
 		return "", errors.New("Compressed request bodies are not supported.")
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
+	limit := int64(maxRequestBytes)
+	if systemOnePath(r.URL.Path) {
+		limit = maxSystemOneImageBytes
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(30 * time.Second))
 	defer http.NewResponseController(w).SetReadDeadline(time.Time{})
 	raw, err := io.ReadAll(r.Body)
@@ -71,6 +76,16 @@ func readRequestModel(w http.ResponseWriter, r *http.Request) (string, error) {
 	if end, err := decoder.Token(); err != nil || end != json.Delim('}') || decoder.Decode(new(any)) != io.EOF {
 		return "", errors.New("Invalid JSON request body.")
 	}
+	if systemOnePath(r.URL.Path) {
+		if _, ok := payload["model"]; !ok {
+			return "", errors.New("A model is required in the JSON body.")
+		}
+		var images []json.RawMessage
+		_ = json.Unmarshal(payload["images"], &images)
+		if len(images) == 0 && len(raw) > maxSystemOneTextBytes {
+			return "", &http.MaxBytesError{Limit: maxSystemOneTextBytes}
+		}
+	}
 	model := ""
 	for _, field := range []string{"model", "name"} {
 		if value, ok := payload[field]; ok {
@@ -103,6 +118,15 @@ func readRequestModel(w http.ResponseWriter, r *http.Request) (string, error) {
 			}
 			query.Del(field)
 		}
+	}
+	if systemOnePath(r.URL.Path) {
+		// State and ordered question criteria must reach the decision runner unchanged.
+		r.URL.RawQuery = query.Encode()
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		r.ContentLength = int64(len(raw))
+		r.Header.Set("Content-Length", strconv.Itoa(len(raw)))
+		r.Header.Set("Content-Type", "application/json")
+		return normalizeModel(model), nil
 	}
 	// Forward exactly the model that was authorized, without ambiguous aliases.
 	payload["model"], _ = json.Marshal(model)
