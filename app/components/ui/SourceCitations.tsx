@@ -3,8 +3,8 @@
 import { useId, useState, useSyncExternalStore, type ReactNode } from "react";
 import Image from "next/image";
 import { ArrowUpRight, ChevronDown, Globe } from "lucide-react";
-import type { SearchSource } from "@/lib/searchEvidence";
-import { sourceDomain, sourceFaviconHref, sourceOutboundHref } from "@/lib/sourcePresentation";
+import type { SearchSource } from "@/lib/search/searchEvidence";
+import { sourceDomain, sourceFaviconHref, sourceOutboundHref } from "@/lib/search/sourcePresentation";
 import styles from "./SourceCitations.module.css";
 
 const subscribe = () => () => {};

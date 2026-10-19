@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { SESSION_COOKIE, verifyToken } from "@/lib/auth";
+import { SESSION_COOKIE, verifyToken } from "@/lib/auth/auth";
 import { ChatInterface } from "./components/ChatInterface";
 
 export default async function Home({ searchParams }: {

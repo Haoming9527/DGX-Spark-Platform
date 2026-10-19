@@ -31,6 +31,10 @@ func newOllaProxy(ollaURL *url.URL) *httputil.ReverseProxy {
 		r.Host = ollaURL.Host
 		r.Header.Del("Authorization")
 		r.Header.Del("Accept-Encoding")
+		// Client-supplied forwarding headers are spoofable; upstream only ever sees the gateway's own address.
+		r.Header.Del("X-Forwarded-For")
+		r.Header.Del("X-Real-IP")
+		r.Header.Del("Forwarded")
 	}
 	return proxy
 }

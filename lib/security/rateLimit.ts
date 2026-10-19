@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { isIP } from "node:net";
-import { prisma } from "./prisma";
+import { prisma } from "../prisma";
 import { ApiRequestError } from "./apiRequest";
 
 export function clientKey(req: { headers: Headers }): string {
@@ -13,13 +13,17 @@ export function clientKey(req: { headers: Headers }): string {
   return new URL(`http://[${address}]/`).hostname.slice(1, -1);
 }
 
+export function keyHash(key: string): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new ApiRequestError(503, "Service is temporarily unavailable. Try again shortly.");
+  return createHmac("sha256", secret).update(key).digest("hex");
+}
+
 export async function takeRateLimit(
   key: string,
   opts: { limit: number; windowMs: number },
 ): Promise<boolean> {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) throw new ApiRequestError(503, "Service is temporarily unavailable. Try again shortly.");
-  const hash = createHmac("sha256", secret).update(`${opts.windowMs}:${key}`).digest("hex");
+  const hash = keyHash(`${opts.windowMs}:${key}`);
   try {
     await prisma.$executeRaw`
       DELETE FROM rate_limit_buckets

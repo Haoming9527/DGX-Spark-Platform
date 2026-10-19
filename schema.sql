@@ -56,6 +56,15 @@ CREATE TABLE IF NOT EXISTS rate_limit_buckets (
 
 CREATE INDEX IF NOT EXISTS idx_rate_limit_buckets_expires_at ON rate_limit_buckets(expires_at);
 
+CREATE TABLE IF NOT EXISTS guest_streams (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    key_hash VARCHAR(64) NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_guest_streams_key ON guest_streams(key_hash, expires_at);
+CREATE INDEX IF NOT EXISTS idx_guest_streams_expiry ON guest_streams(expires_at);
+
 CREATE TABLE IF NOT EXISTS mcp_connections (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

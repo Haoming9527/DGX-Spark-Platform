@@ -10,14 +10,14 @@ import { ChatInput } from "./ChatInput";
 import { LogOut, TriangleAlert, X, Loader2, Router } from "lucide-react";
 import Link from "next/link";
 import { LogoMark } from "./ui/LogoMark";
-import { splitAssistantText } from "../../lib/splitThinking";
+import { splitAssistantText } from "../../lib/chat/splitThinking";
 import { useChatStickScroll } from "./useChatStickScroll";
-import { readThinkingMetadata, selectThinkingControl, thinkingMode } from "@/lib/modelThinking";
-import { streamMcpChat, suggestFollowUps } from "@/lib/mcpChat";
-import type { McpActivity } from "@/lib/mcpChat";
-import { sourceId } from "@/lib/searchEvidence";
-import { clipHarnessText, harnessBudget } from "@/lib/chatHarness";
-import { isDecisionModel } from "@/lib/modelCapabilities";
+import { readThinkingMetadata, selectThinkingControl, thinkingMode } from "@/lib/models/modelThinking";
+import { streamMcpChat, suggestFollowUps } from "@/lib/chat/mcpChat";
+import type { McpActivity } from "@/lib/chat/mcpChat";
+import { sourceId } from "@/lib/search/searchEvidence";
+import { clipHarnessText, harnessBudget } from "@/lib/chat/chatHarness";
+import { isDecisionModel } from "@/lib/models/modelCapabilities";
 
 const McpDialog = dynamic(() => import("./McpDialog").then((m) => m.McpDialog));
 
@@ -372,11 +372,13 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
       if (!response.ok || isJson) {
         responseFailed = true;
         if (response.status === 429) {
+          const data = isJson ? await response.json().catch(() => ({})) : {};
+          const content = data.code === "GUEST_BUSY" || data.code === "GUEST_DAILY_LIMIT"
+            ? data.error
+            : "Too many requests. Wait a moment and try again.";
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: "Too many requests. Wait a moment and try again.", isThinking: false }
-                : msg
+              msg.id === assistantMessageId ? { ...msg, content, isThinking: false } : msg
             )
           );
           return;

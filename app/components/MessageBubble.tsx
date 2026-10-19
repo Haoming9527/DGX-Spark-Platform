@@ -12,13 +12,13 @@ import type { Components } from "react-markdown";
 import { useTheme } from "./ui/ThemeToggle";
 import Image from "next/image";
 import { McpActivity } from "./McpActivity";
-import { copyWithSourceCitations, displayWithSourceCitations, remarkSourceCitations } from "@/lib/searchCitations";
+import { copyWithSourceCitations, displayWithSourceCitations, remarkSourceCitations } from "@/lib/search/searchCitations";
 import { ResponseActivity } from "./ui/ResponseActivity";
 import { SourceChip, SourcesDisclosure } from "./ui/SourceCitations";
 import { MessageEditor } from "./ui/MessageEditor";
 import { FollowUps } from "./ui/FollowUps";
 import styles from "./MessageBubble.module.css";
-import { rehypeStreamingWords } from "@/lib/streamingMarkdown";
+import { rehypeStreamingWords } from "@/lib/chat/streamingMarkdown";
 
 interface MessageBubbleProps {
   message: Message;

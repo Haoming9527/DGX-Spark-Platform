@@ -1,8 +1,8 @@
-import { apiFailure, readJsonBody } from "@/lib/apiRequest";
+import { apiFailure, readJsonBody } from "@/lib/security/apiRequest";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdminRequest } from "@/lib/requireAccount";
-import { gatewayAuthHeaders, requireInferenceGateway } from "@/lib/inferenceGateway";
+import { requireAdminRequest } from "@/lib/auth/requireAccount";
+import { gatewayAuthHeaders, requireInferenceGateway } from "@/lib/inference/inferenceGateway";
 
 function normalizeModel(name: string): string {
   const trimmed = name.trim();

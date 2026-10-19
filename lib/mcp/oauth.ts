@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { auth, type OAuthClientProvider, type OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientInformationMixed, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
-import { ApiRequestError } from "../apiRequest";
+import { ApiRequestError } from "../security/apiRequest";
 import { prisma } from "../prisma";
 import { digest, seal, unseal } from "./crypto";
 import { publicUrl, resolvePublic, mcpNetwork } from "./network";

@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { gatewayAuthHeaders } from "../../../lib/inferenceGateway";
-import { inferenceKeyForAccount } from "../../../lib/inferenceKey";
-import { loadOptionalAccount } from "../../../lib/requireAccount";
-import { clearSessionCookie } from "../../../lib/auth";
-import { clientKey, takeRateLimit } from "../../../lib/rateLimit";
-import { ApiRequestError, apiFailure, readJsonBody } from "../../../lib/apiRequest";
-import { WEB_SEARCH_TOOL } from "../../../lib/webSearchTool";
-import { harnessBudget, harnessClock, harnessPhasePrompt, PLAN_SCHEMA, REVIEW_SCHEMA, FOLLOW_UP_SCHEMA } from "../../../lib/chatHarness";
-import { compactMessages, ContextBudgetError, estimateContextUnits, type ContextMessage } from "../../../lib/harnessContext";
-import { selectThinkingControl } from "../../../lib/modelThinking";
+import { gatewayAuthHeaders } from "../../../lib/inference/inferenceGateway";
+import { inferenceKeyForAccount } from "../../../lib/inference/inferenceKey";
+import { loadOptionalAccount } from "../../../lib/auth/requireAccount";
+import { clearSessionCookie } from "../../../lib/auth/auth";
+import { clientKey, takeRateLimit } from "../../../lib/security/rateLimit";
+import { ApiRequestError, apiFailure, readJsonBody, requireSameOrigin } from "../../../lib/security/apiRequest";
+import { requireHuman } from "../../../lib/security/botCheck";
+import {
+  acquireGuestStream, GUEST_BUSY, GUEST_DAILY_REQUESTS, guestStreamRelease, releaseWhenDone, requireGuestDailyAllowance,
+} from "../../../lib/security/guestLimits";
+import { WEB_SEARCH_TOOL } from "../../../lib/search/webSearchTool";
+import { harnessBudget, harnessClock, harnessPhasePrompt, PLAN_SCHEMA, REVIEW_SCHEMA, FOLLOW_UP_SCHEMA } from "../../../lib/chat/chatHarness";
+import { compactMessages, ContextBudgetError, estimateContextUnits, type ContextMessage } from "../../../lib/chat/harnessContext";
+import { selectThinkingControl } from "../../../lib/models/modelThinking";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +98,11 @@ function chatMessages(value: unknown): ContextMessage[] {
 
 export async function POST(req: NextRequest) {
   let clearCookie = false;
+  let releaseLease: (() => void) | undefined;
+  let streaming = false;
   try {
+    requireSameOrigin(req);
+    await requireHuman();
     const optional = await loadOptionalAccount(req);
     clearCookie = optional.clearCookie;
     if (clearCookie) return reply(NextResponse.json({ error: "Sign in again to continue." }, { status: 401 }), true);
@@ -103,10 +111,11 @@ export async function POST(req: NextRequest) {
     const overLimit = account
       ? !await takeRateLimit(`chat:${account.id}`, { limit: 30, windowMs: 60_000 })
       : !await takeRateLimit(`chat-anon:${ip}`, { limit: 5, windowMs: 60_000 }) ||
-        !await takeRateLimit(`chat-anon-hour:${ip}`, { limit: 15, windowMs: 60 * 60 * 1000 });
+        !await takeRateLimit(`chat-anon-hour:${ip}`, { limit: 30, windowMs: 60 * 60 * 1000 });
     if (overLimit) {
       return reply(NextResponse.json({ error: "Too many requests." }, { status: 429 }), clearCookie);
     }
+    if (!account) await requireGuestDailyAllowance("chat-anon-day", ip, GUEST_DAILY_REQUESTS);
 
     const { messages: rawMessages, model, useReasoning, thinkingControl, tools, webSearch, harnessPhase, timeZone } = await readJsonBody(req, 48 * 1024 * 1024);
     const messages = chatMessages(rawMessages);
@@ -123,24 +132,15 @@ export async function POST(req: NextRequest) {
     if (timeZone !== undefined && (typeof timeZone !== "string" || timeZone.length > 100)) {
       throw new ApiRequestError(400, "Invalid time zone.");
     }
-    if (harnessPhase && req.headers.get("origin") !== req.nextUrl.origin) {
-      throw new ApiRequestError(403, "Chat planning is available from this website.");
-    }
     if (webSearch !== undefined && typeof webSearch !== "boolean") {
       throw new ApiRequestError(400, "Web search must be true or false.");
     }
     let validatedTools;
     if (tools !== undefined) {
       if (!account) throw new ApiRequestError(401, "Sign in to use MCP tools.");
-      if (req.headers.get("origin") !== req.nextUrl.origin) {
-        throw new ApiRequestError(403, "MCP chat requests must come from this website.");
-      }
       validatedTools = chatTools(tools);
     }
     if (webSearch === true) {
-      if (req.headers.get("origin") !== req.nextUrl.origin) {
-        throw new ApiRequestError(403, "Web search chat requests must come from this website.");
-      }
       validatedTools = chatTools([...(validatedTools ?? []), WEB_SEARCH_TOOL]);
     }
     const { base, apiKey } = inferenceKeyForAccount(account);
@@ -167,6 +167,12 @@ export async function POST(req: NextRequest) {
       : thinkingControl === undefined
       ? selectThinkingControl(String(payload.model), undefined, useReasoning === true)
       : thinkingControl;
+
+    if (!account) {
+      const lease = await acquireGuestStream(ip);
+      if (!lease) throw new ApiRequestError(429, "Guest capacity is full right now. Sign in or try again in a moment.", GUEST_BUSY);
+      releaseLease = guestStreamRelease(lease);
+    }
 
     const response = await fetch(`${base}/olla/ollama/api/chat`, {
       method: "POST",
@@ -279,8 +285,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const body = releaseLease && response.body ? releaseWhenDone(response.body, releaseLease, req.signal) : response.body;
+    streaming = body !== null;
     return reply(
-      new Response(response.body, {
+      new Response(body, {
         headers: {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
@@ -292,5 +300,7 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     if (error instanceof ContextBudgetError) return reply(NextResponse.json({ error: error.message }, { status: 413 }), clearCookie);
     return reply(apiFailure(error, "Chat request failed:"), clearCookie);
+  } finally {
+    if (!streaming) releaseLease?.();
   }
 }

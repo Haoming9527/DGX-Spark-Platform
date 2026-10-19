@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { describeModel } from "../../../lib/modelMeta";
+import { describeModel } from "../../../lib/models/modelMeta";
 
 function KimiGlyph({ className = "" }: { className?: string }) {
   return (

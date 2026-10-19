@@ -1,9 +1,9 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, verifyToken } from "../auth";
-import { loadAccount } from "../account";
-import { ApiRequestError } from "../apiRequest";
-import { takeRateLimit } from "../rateLimit";
+import { SESSION_COOKIE, verifyToken } from "../auth/auth";
+import { loadAccount } from "../auth/account";
+import { ApiRequestError } from "../security/apiRequest";
+import { takeRateLimit } from "../security/rateLimit";
 import { digest } from "./crypto";
 
 export async function mcpAccount(req: NextRequest, mutation = true, limit = 20) {

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requirePowerOperatorRequest } from "@/lib/requireAccount";
+import { requirePowerOperatorRequest } from "@/lib/auth/requireAccount";
 import { readSparkStatus, sparkFailure } from "@/lib/infra/sparkGateway";
 
 export const runtime = "nodejs";

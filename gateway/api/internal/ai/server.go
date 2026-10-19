@@ -9,8 +9,12 @@ import (
 	"time"
 
 	"github.com/Haoming9527/dgx-spark-platform/gateway/api/internal/admission"
+	"github.com/Haoming9527/dgx-spark-platform/gateway/api/internal/ratelimit"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// Failed authentication attempts allowed per client IP per minute before the database is skipped.
+const failedAuthPerMinute = 20
 
 type Config struct {
 	OllaURL     string
@@ -19,13 +23,21 @@ type Config struct {
 	AdminKey    string
 	PromptFile  string
 	Admission   *admission.Gate
+	// Limits for personal API keys; service keys are exempt. Zero disables a limit.
+	KeyRequestsPerMinute int
+	KeyConcurrency       int
+	// DBMaxConns overrides the pgx pool size when positive.
+	DBMaxConns int32
 }
 
 type Server struct {
-	config  Config
-	pool    *pgxpool.Pool
-	ollaURL *url.URL
-	handler http.Handler
+	config         Config
+	pool           *pgxpool.Pool
+	ollaURL        *url.URL
+	handler        http.Handler
+	failedAuth     *ratelimit.Window
+	keyRequests    *ratelimit.Window
+	keyConcurrency *ratelimit.Concurrency
 }
 
 func New(ctx context.Context, config Config) (*Server, error) {
@@ -42,13 +54,22 @@ func New(ctx context.Context, config Config) (*Server, error) {
 	if config.Admission == nil {
 		config.Admission = admission.New()
 	}
-	s := &Server{config: config, ollaURL: upstream}
+	s := &Server{
+		config:         config,
+		ollaURL:        upstream,
+		failedAuth:     ratelimit.NewWindow(failedAuthPerMinute, time.Minute),
+		keyRequests:    ratelimit.NewWindow(config.KeyRequestsPerMinute, time.Minute),
+		keyConcurrency: ratelimit.NewConcurrency(config.KeyConcurrency),
+	}
 	if config.DatabaseURL != "" {
 		pc, err := pgxpool.ParseConfig(config.DatabaseURL)
 		if err != nil {
 			return nil, fmt.Errorf("invalid DATABASE_URL configuration")
 		}
 		pc.ConnConfig.ConnectTimeout = 5 * time.Second
+		if config.DBMaxConns > 0 {
+			pc.MaxConns = config.DBMaxConns
+		}
 		// No startup Ping: acquisitions connect on demand and retry after failure.
 		// An unreachable database must not prevent the infra listener starting.
 		s.pool, err = pgxpool.NewWithConfig(ctx, pc)

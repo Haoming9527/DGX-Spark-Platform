@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "../../../lib/prisma";
-import { requireActiveAccount } from "../../../lib/requireAccount";
-import { ApiRequestError, apiFailure, readJsonBody } from "../../../lib/apiRequest";
+import { requireActiveAccount } from "../../../lib/auth/requireAccount";
+import { ApiRequestError, apiFailure, readJsonBody } from "../../../lib/security/apiRequest";
 
 function hashKey(rawKey: string): string {
   return crypto.createHash("sha256").update(rawKey).digest("hex");

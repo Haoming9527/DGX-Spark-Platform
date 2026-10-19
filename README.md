@@ -271,7 +271,7 @@ Confirm exactly one intended account was returned. Refresh your session, open **
 
 Share the frontend URL and referral code with collaborators. Each person creates their own account and personal API key. Share the gateway's `/v1` base URL with SDK users; never distribute the frontend's service keys, MQTT password, or SSH key. Configure model restrictions in **Admin → Models** and check access with a regular user account before inviting everyone.
 
-**Access scope:** signup is invite-gated, but the current app also allows rate-limited guest chat on unrestricted models. A public frontend is therefore not an invite-only inference service. If your deployment must be private, put the frontend behind an access layer that covers both pages and API routes. Usage reporting is not billing or a per-user spending quota.
+**Access scope:** signup is invite-gated, but the current app also allows guest chat, with every feature, on unrestricted models. Guests are bounded by the limits in [Abuse protection](#abuse-protection). A public frontend is therefore not an invite-only inference service. If your deployment must be private, put the frontend behind an access layer that covers both pages and API routes. Usage reporting is not billing or a per-user spending quota.
 
 ### 6. Check the shared setup
 
@@ -319,6 +319,27 @@ curl --fail https://api.dgxspark.dev/healthz
 Publish only the authenticated Go gateway. Olla's host port is bound to localhost; its upstream API key does not authenticate incoming clients. Do not point a public tunnel or port forward at Olla directly.
 
 Vercel supplies the trusted client IP automatically. When self-hosting Next.js behind a reverse proxy, set `TRUSTED_CLIENT_IP_HEADER` only to a header that the proxy overwrites with the client's IP, and prevent direct access to the origin. Otherwise leave it empty: anonymous requests share one conservative rate-limit bucket. Rate-limit identifiers are hashed and counters expire in Neon.
+
+## Abuse protection
+
+Guests can use every model and feature. These controls keep scripts, embedders, and individual guests from monopolising the hardware.
+
+| Layer | Control |
+| --- | --- |
+| Bot verification | [Vercel BotID](https://vercel.com/docs/botid) checks every chat, web search, login, and signup request; automated clients get `403`. It runs only on Vercel, and local development always passes. |
+| Embedding | `frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN` stop other sites framing the app. |
+| Same-origin | Chat, search, login, and signup accept only same-origin `application/json` requests. |
+| Guest concurrency | At most 2 streaming replies per guest IP and 4 guest replies across the site, so guests never fill the GPU for signed-in users. Tracked in `guest_streams`; a lease expires after 200 seconds if a function stops. |
+| Guest allowance | Per IP: 5 chat requests/minute, 30/hour, and 120/day (one turn with search and review uses several). Web search: 5/minute, 15/hour, 60/day. Signed-in users keep 30 chat requests/minute. |
+| Status endpoints | `/api/models` and `/api/status`: 60 requests/minute per IP. |
+| Gateway keys | Each personal `dgx_sk_` key: `KEY_RPM` requests/minute (default 60) and `KEY_CONCURRENCY` in-flight inference requests (default 4). `0` disables a limit. Service keys are exempt. |
+| Gateway auth | 20 failed authentication attempts per minute per client IP (from `CF-Connecting-IP`), then `429` without a database lookup. The live model list is cached for 5 seconds. |
+
+Adjust guest limits in [lib/security/guestLimits.ts](lib/security/guestLimits.ts). Apply [schema.sql](schema.sql) before deploying so `guest_streams` exists.
+
+Optionally, add one Vercel Firewall rate-limit rule (included on Hobby) so floods are rejected before any function runs: **Firewall → Configure → New Rule**, condition *Request Path* equals `/api/chat` and *Method* equals `POST`, action **Rate Limit**, fixed window 60 s, 20 requests, key IP, then 429.
+
+Guest limits key on a keyed hash of the client IP, never the raw address, and the counters expire. Visitors sharing an IP (offices, mobile carriers) share guest limits; signing in avoids this.
 
 ## Spark power control
 
@@ -391,11 +412,11 @@ docker compose up -d --build
 docker compose logs --tail=50 api
 ```
 
-Preserve existing `.env` files and add new settings from the examples as needed. After changing gateway environment values, use `docker compose up -d api` to recreate the container; `docker compose restart` does not load those changes. Deploy frontend updates separately and apply any required database migrations.
+Preserve existing `.env` files and add new settings from the examples as needed. After changing gateway environment values, use `docker compose up -d api` to recreate the container; `docker compose restart` does not load those changes. After changing [olla.yaml](gateway/config/olla.yaml), run `docker compose restart olla`; the mounted file is read only at startup. Deploy frontend updates separately and apply any required database migrations.
 
 For a locally hosted frontend, apply [schema.sql](schema.sql), run `npm ci`, `npm run build`, and restart its process.
 
-For development, `npm run lint` checks the frontend. With a compatible local Go toolchain, run `go vet ./...` and `go build .` from `gateway/api/`.
+For development, `npm run lint` checks the frontend. With a compatible local Go toolchain, run `go vet ./...`, `go test ./...`, and `go build .` from `gateway/api/`.
 
 ## Contributions welcome
 

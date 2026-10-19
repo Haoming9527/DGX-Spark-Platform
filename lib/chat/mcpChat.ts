@@ -1,10 +1,10 @@
 import { splitAssistantText } from "./splitThinking";
-import type { Message } from "../app/types/chat";
-import { WEB_SEARCH_TOOL } from "./webSearchTool";
+import type { Message } from "../../app/types/chat";
+import { WEB_SEARCH_TOOL } from "../search/webSearchTool";
 import { clipHarnessText, harnessBudget, type EvidenceReview, type SearchPlan } from "./chatHarness";
-import type { SearchSource } from "./searchEvidence";
+import type { SearchSource } from "../search/searchEvidence";
 import { compactMessages, compactToolContent, estimateContextUnits } from "./harnessContext";
-import type { ThinkingControl } from "./modelThinking";
+import type { ThinkingControl } from "../models/modelThinking";
 
 export type McpActivity = {
   id: string;

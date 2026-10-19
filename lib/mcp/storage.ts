@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { OAuthClientInformationMixed, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 import { prisma } from "../prisma";
-import { ApiRequestError } from "../apiRequest";
+import { ApiRequestError } from "../security/apiRequest";
 import { seal, unseal } from "./crypto";
 import type { McpAuth, McpConnection } from "./types";
 

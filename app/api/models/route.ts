@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { gatewayAuthHeaders } from "../../../lib/inferenceGateway";
-import { inferenceKeyForAccount } from "../../../lib/inferenceKey";
-import { loadOptionalAccount } from "../../../lib/requireAccount";
-import { clearSessionCookie } from "../../../lib/auth";
+import { gatewayAuthHeaders } from "../../../lib/inference/inferenceGateway";
+import { inferenceKeyForAccount } from "../../../lib/inference/inferenceKey";
+import { loadOptionalAccount } from "../../../lib/auth/requireAccount";
+import { clearSessionCookie } from "../../../lib/auth/auth";
+import { clientKey, takeRateLimit } from "../../../lib/security/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,9 @@ function json(data: unknown, init?: { status?: number; headers?: HeadersInit }, 
 
 export async function GET(req: NextRequest) {
   try {
+    if (!await takeRateLimit(`models:${clientKey(req)}`, { limit: 60, windowMs: 60_000 })) {
+      return json({ error: "Too many requests." }, { status: 429 });
+    }
     const { account, clearCookie } = await loadOptionalAccount(req);
     const { base, apiKey } = inferenceKeyForAccount(account);
     const headers = gatewayAuthHeaders(apiKey);

@@ -1,8 +1,8 @@
-import { apiFailure } from "@/lib/apiRequest";
+import { apiFailure } from "@/lib/security/apiRequest";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
-import { requireActiveAccount } from "../../../../lib/requireAccount";
-import { filterUsageModels, type ModelUsageRow } from "../../../../lib/usageModels";
+import { requireActiveAccount } from "../../../../lib/auth/requireAccount";
+import { filterUsageModels, type ModelUsageRow } from "../../../../lib/models/usageModels";
 
 const TIMEFRAME_MINUTES = {
   "1h": 60,

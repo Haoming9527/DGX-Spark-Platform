@@ -1,5 +1,5 @@
 import { requireInferenceGateway } from "./inferenceGateway";
-import type { Account } from "./account";
+import type { Account } from "../auth/account";
 
 export function inferenceKeyForAccount(account: Account | null): { base: string; apiKey: string } {
   const { base, apiKey, adminKey } = requireInferenceGateway();

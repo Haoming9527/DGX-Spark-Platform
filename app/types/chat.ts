@@ -1,6 +1,6 @@
-import type { ThinkingMetadata, ThinkingMode } from "@/lib/modelThinking";
-import type { McpActivity, McpChatMessage } from "@/lib/mcpChat";
-import type { SearchSource } from "@/lib/searchEvidence";
+import type { ThinkingMetadata, ThinkingMode } from "@/lib/models/modelThinking";
+import type { McpActivity, McpChatMessage } from "@/lib/chat/mcpChat";
+import type { SearchSource } from "@/lib/search/searchEvidence";
 
 export interface Message {
   id: string;

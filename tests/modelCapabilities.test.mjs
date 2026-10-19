@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isDecisionModel } from "../lib/modelCapabilities.ts";
+import { isDecisionModel } from "../lib/models/modelCapabilities.ts";
 
 test("decision capability identifies custom names, including vision models", () => {
   assert.equal(isDecisionModel("my-classifier:v2", ["vision", "decision"]), true);

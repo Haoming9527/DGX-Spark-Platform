@@ -18,7 +18,8 @@ server:
     per_ip_requests_per_minute: 120
     health_requests_per_minute: 1000
     burst_size: 50
-    trust_proxy_headers: true
+    # Only the Go gateway calls Olla; client forwarding headers are spoofable and stripped there.
+    trust_proxy_headers: false
     trusted_proxy_cidrs:
       - "127.0.0.0/8"
       - "10.0.0.0/8"

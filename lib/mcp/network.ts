@@ -1,9 +1,9 @@
 import "server-only";
 import { Agent } from "undici";
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { ApiRequestError } from "../apiRequest";
-import { resolvePublic } from "../publicNetwork";
-export { resolvePublic } from "../publicNetwork";
+import { ApiRequestError } from "../security/apiRequest";
+import { resolvePublic } from "../security/publicNetwork";
+export { resolvePublic } from "../security/publicNetwork";
 
 export function publicUrl(value: string | URL): URL {
   let url: URL;

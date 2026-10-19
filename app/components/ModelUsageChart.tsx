@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { formatCompactNumber } from "../../lib/formatNumber";
+import { formatCompactNumber } from "../../lib/utils/formatNumber";
 
 type ModelUsage = { model: string; requests: number; tokens: number };
 const tabs = ["Request", "Tokens", "Usage"] as const;

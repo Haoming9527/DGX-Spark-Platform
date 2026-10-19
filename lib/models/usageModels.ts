@@ -1,5 +1,5 @@
-import { prisma } from "./prisma";
-import { loadAccount } from "./account";
+import { prisma } from "../prisma";
+import { loadAccount } from "../auth/account";
 
 export type ModelUsageRow = {
   model: string;

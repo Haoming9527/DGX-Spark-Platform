@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminRequest } from "@/lib/requireAccount";
+import { requireAdminRequest } from "@/lib/auth/requireAccount";
 import { parsePowerSnapshot } from "@/lib/infra/power";
 
 export const runtime = "nodejs";

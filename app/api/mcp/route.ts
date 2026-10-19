@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ApiRequestError, readJsonBody } from "@/lib/apiRequest";
+import { ApiRequestError, readJsonBody } from "@/lib/security/apiRequest";
 import { mcpConfigured } from "@/lib/mcp/crypto";
 import { publicUrl, resolvePublic } from "@/lib/mcp/network";
 import { boundedString, mcpAccount, mcpFailure, mcpJson } from "@/lib/mcp/request";

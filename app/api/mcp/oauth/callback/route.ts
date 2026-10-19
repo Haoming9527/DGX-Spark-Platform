@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ApiRequestError } from "@/lib/apiRequest";
+import { ApiRequestError } from "@/lib/security/apiRequest";
 import { finishAuthorization } from "@/lib/mcp/oauth";
 import { boundedString, mcpAccount } from "@/lib/mcp/request";
 

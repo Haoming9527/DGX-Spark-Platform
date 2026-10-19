@@ -14,8 +14,20 @@ func (s *Server) routes() http.Handler {
 	promptStore := loadSystemPromptStore(s.config.PromptFile)
 	proxy := newOllaProxy(ollaURL)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := clientIP(r)
+		if s.failedAuth.Exceeded(ip) {
+			writeRateLimited(w, "60", "Too many failed authentication attempts. Try again in a minute.")
+			return
+		}
 		ident, ok := authorizedRequest(w, r, pool, chatServiceKey, adminServiceKey)
 		if !ok {
+			if !ident.unavailable {
+				s.failedAuth.Allow(ip)
+			}
+			return
+		}
+		if ident.keyID != "" && !s.keyRequests.Allow(ident.keyID) {
+			writeRateLimited(w, "60", "Rate limit reached for this API key. Try again shortly.")
 			return
 		}
 		r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
@@ -62,6 +74,14 @@ func (s *Server) routes() http.Handler {
 			return
 		}
 		defer release()
+		if ident.keyID != "" {
+			releaseKey, ok := s.keyConcurrency.Acquire(ident.keyID)
+			if !ok {
+				writeRateLimited(w, "5", "Too many concurrent requests for this API key. Wait for one to finish.")
+				return
+			}
+			defer releaseKey()
+		}
 		requestedModel, err := readRequestModel(w, r)
 		if err != nil {
 			var tooLarge *http.MaxBytesError

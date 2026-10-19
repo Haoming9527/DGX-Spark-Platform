@@ -74,6 +74,16 @@ model RateLimitBucket {
   @@map("rate_limit_buckets")
 }
 
+model GuestStream {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  keyHash   String   @map("key_hash") @db.VarChar(64)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@index([keyHash, expiresAt], map: "idx_guest_streams_key")
+  @@index([expiresAt], map: "idx_guest_streams_expiry")
+  @@map("guest_streams")
+}
+
 model McpConnection {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId       String   @map("user_id") @db.Uuid

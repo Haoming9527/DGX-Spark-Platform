@@ -1,6 +1,6 @@
 import "server-only";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { ApiRequestError } from "../apiRequest";
+import { ApiRequestError } from "../security/apiRequest";
 
 function encryptionKey() {
   const value = process.env.MCP_ENCRYPTION_KEY?.trim() ?? "";

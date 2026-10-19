@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -21,6 +22,20 @@ func envOr(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// envInt reads a non-negative integer setting; invalid values keep the fallback.
+func envInt(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 0 {
+		log.Printf("ignoring invalid %s=%q; using %d", key, value, fallback)
+		return fallback
+	}
+	return n
 }
 
 func main() {
@@ -58,6 +73,10 @@ func run() error {
 		ChatKey:     os.Getenv("CHAT_SERVICE_KEY"),
 		AdminKey:    os.Getenv("ADMIN_SERVICE_KEY"),
 		PromptFile:  envOr("SYSTEM_PROMPT_FILE", "/config/system-prompt.md"),
+
+		KeyRequestsPerMinute: envInt("KEY_RPM", 60),
+		KeyConcurrency:       envInt("KEY_CONCURRENCY", 4),
+		DBMaxConns:           int32(min(envInt("DB_MAX_CONNS", 8), 100)),
 	})
 	if err != nil {
 		return err

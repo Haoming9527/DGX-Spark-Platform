@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "../../../../lib/prisma";
-import { hashPassword, generateToken, applySessionCookie } from "../../../../lib/auth";
-import { loadAccount, publicUser } from "../../../../lib/account";
-import { clientKey, takeRateLimit } from "../../../../lib/rateLimit";
-import { apiFailure, readJsonBody } from "../../../../lib/apiRequest";
+import { hashPassword, generateToken, applySessionCookie } from "../../../../lib/auth/auth";
+import { loadAccount, publicUser } from "../../../../lib/auth/account";
+import { clientKey, takeRateLimit } from "../../../../lib/security/rateLimit";
+import { apiFailure, readJsonBody, requireSameOrigin } from "../../../../lib/security/apiRequest";
+import { requireHuman } from "../../../../lib/security/botCheck";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: NextRequest) {
   try {
+    requireSameOrigin(req);
+    await requireHuman();
     if (!await takeRateLimit(`signup:${clientKey(req)}`, { limit: 5, windowMs: 15 * 60 * 1000 })) {
       return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
     }

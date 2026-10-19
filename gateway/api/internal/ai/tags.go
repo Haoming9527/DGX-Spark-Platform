@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
@@ -87,7 +88,51 @@ func writeLiveModelList(ctx context.Context, w http.ResponseWriter, ollaBase *ur
 	writeJSON(w, http.StatusOK, ollamaTagsResponse{Models: models})
 }
 
+const (
+	modelListTTL     = 5 * time.Second
+	modelListFailTTL = 2 * time.Second
+)
+
+type modelListEntry struct {
+	models []map[string]any
+	err    error
+	at     time.Time
+}
+
+// modelLists caches the live model list per Olla URL so each request does not re-query Olla and the inference servers.
+var modelLists = struct {
+	sync.Mutex
+	entries map[string]modelListEntry
+}{entries: map[string]modelListEntry{}}
+
 func fetchLiveOllamaModelsRaw(ollaBase *url.URL) ([]map[string]any, error) {
+	key := ollaBase.String()
+	modelLists.Lock()
+	entry, ok := modelLists.entries[key]
+	modelLists.Unlock()
+	ttl := modelListTTL
+	if entry.err != nil {
+		ttl = modelListFailTTL
+	}
+	if !ok || time.Since(entry.at) >= ttl {
+		models, err := fetchLiveOllamaModelsUncached(ollaBase)
+		entry = modelListEntry{models: models, err: err, at: time.Now()}
+		modelLists.Lock()
+		modelLists.entries[key] = entry
+		modelLists.Unlock()
+	}
+	if entry.err != nil {
+		return nil, entry.err
+	}
+	// Callers add fields to each model, so every caller gets its own copies.
+	out := make([]map[string]any, len(entry.models))
+	for i, m := range entry.models {
+		out[i] = maps.Clone(m)
+	}
+	return out, nil
+}
+
+func fetchLiveOllamaModelsUncached(ollaBase *url.URL) ([]map[string]any, error) {
 	endpoints, err := listHealthyOllamaEndpoints(ollaBase)
 	if err != nil {
 		return nil, err

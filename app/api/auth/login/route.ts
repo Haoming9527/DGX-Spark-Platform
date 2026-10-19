@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../../lib/prisma";
-import { comparePassword, hashPassword, generateToken, getSession, applySessionCookie, clearSessionCookie } from "../../../../lib/auth";
-import { loadAccount, publicUser } from "../../../../lib/account";
-import { clientKey, takeRateLimit } from "../../../../lib/rateLimit";
-import { apiFailure, readJsonBody } from "../../../../lib/apiRequest";
+import { comparePassword, hashPassword, generateToken, getSession, applySessionCookie, clearSessionCookie } from "../../../../lib/auth/auth";
+import { loadAccount, publicUser } from "../../../../lib/auth/account";
+import { clientKey, takeRateLimit } from "../../../../lib/security/rateLimit";
+import { apiFailure, readJsonBody, requireSameOrigin } from "../../../../lib/security/apiRequest";
+import { requireHuman } from "../../../../lib/security/botCheck";
 
 function sessionCookie(response: NextResponse, token: string) {
   applySessionCookie(response, token);
@@ -29,6 +30,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    requireSameOrigin(req);
+    await requireHuman();
     if (!await takeRateLimit(`login:${clientKey(req)}`, { limit: 10, windowMs: 15 * 60 * 1000 })) {
       return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
     }

@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { ModelUsageChart } from "./ModelUsageChart";
 import { Info, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { formatCompactNumber } from "../../lib/formatNumber";
+import { formatCompactNumber } from "../../lib/utils/formatNumber";
 
 interface ApiKey {
   id: string;

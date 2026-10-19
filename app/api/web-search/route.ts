@@ -1,27 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadOptionalAccount } from "../../../lib/requireAccount";
-import { clientKey, takeRateLimit } from "../../../lib/rateLimit";
-import { ApiRequestError, apiFailure, readJsonBody } from "../../../lib/apiRequest";
-import { unauthorizedResponse } from "../../../lib/auth";
-import { searchWeb } from "../../../lib/webSearchProvider";
+import { loadOptionalAccount } from "../../../lib/auth/requireAccount";
+import { clientKey, takeRateLimit } from "../../../lib/security/rateLimit";
+import { ApiRequestError, apiFailure, readJsonBody, requireSameOrigin } from "../../../lib/security/apiRequest";
+import { unauthorizedResponse } from "../../../lib/auth/auth";
+import { searchWeb } from "../../../lib/search/webSearchProvider";
+import { requireHuman } from "../../../lib/security/botCheck";
+import { GUEST_DAILY_SEARCHES, requireGuestDailyAllowance } from "../../../lib/security/guestLimits";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   try {
-    if (req.headers.get("origin") !== req.nextUrl.origin) {
-      throw new ApiRequestError(403, "Web search is available from this website.");
-    }
+    requireSameOrigin(req);
+    await requireHuman();
     const { account, clearCookie } = await loadOptionalAccount(req);
     if (clearCookie) return unauthorizedResponse(true);
-    const bucket = account ? `web-search:${account.id}` : `web-search-anon:${clientKey(req)}`;
+    const ip = clientKey(req);
+    const bucket = account ? `web-search:${account.id}` : `web-search-anon:${ip}`;
     if (!await takeRateLimit(bucket, { limit: account ? 15 : 5, windowMs: 60_000 })) {
       throw new ApiRequestError(429, "Too many searches. Please wait a moment.");
     }
     if (!account && !await takeRateLimit(`${bucket}:hour`, { limit: 15, windowMs: 3_600_000 })) {
       throw new ApiRequestError(429, "Search limit reached. Please try again later.");
     }
+    if (!account) await requireGuestDailyAllowance("web-search-anon-day", ip, GUEST_DAILY_SEARCHES);
     const { query } = await readJsonBody(req, 8192);
     if (typeof query !== "string" || !query.trim() || query.length > 1000) {
       throw new ApiRequestError(400, "Enter a search question of up to 1,000 characters.");

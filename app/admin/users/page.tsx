@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { AdminShell } from "../AdminShell";
 import { ConfirmDialog } from "../ConfirmDialog";
-import type { UserRole } from "@/lib/account";
+import type { UserRole } from "@/lib/auth/account";
 
 type AdminUser = {
   id: string;

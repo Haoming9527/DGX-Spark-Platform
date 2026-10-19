@@ -5,7 +5,7 @@ import {
   Key, Plus, Trash2, Copy, Check, Clock, Loader2,
   AlertTriangle, Shield, Edit2, X
 } from "lucide-react";
-import { formatCompactNumber } from "../../lib/formatNumber";
+import { formatCompactNumber } from "../../lib/utils/formatNumber";
 
 interface ApiKey {
   id: string;

@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { clientKey, takeRateLimit } from "../../../lib/security/rateLimit";
 import {
   getInferenceGatewayBase,
   gatewayAuthHeaders,
   requireInferenceGateway,
-} from "../../../lib/inferenceGateway";
+} from "../../../lib/inference/inferenceGateway";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +17,14 @@ function gatewayHostFromBase(base: string | null): string | null {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const configuredBase = getInferenceGatewayBase();
   const gatewayHost = gatewayHostFromBase(configuredBase);
 
   try {
+    if (!await takeRateLimit(`status:${clientKey(req)}`, { limit: 60, windowMs: 60_000 })) {
+      return NextResponse.json({ error: "Too many requests." }, { status: 429 });
+    }
     const { base, apiKey } = requireInferenceGateway();
     const response = await fetch(`${base}/status`, {
       method: "GET",

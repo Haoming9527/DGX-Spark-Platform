@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -70,6 +71,22 @@ func authorize(ctx context.Context, pool *pgxpool.Pool, chatServiceKey, adminSer
 		role = "user"
 	}
 	return authIdentity{ok: true, keyID: keyID, userID: userID, role: role}
+}
+
+// clientIP trusts CF-Connecting-IP: Cloudflare overwrites it, and the API port is bound to localhost behind the tunnel.
+func clientIP(r *http.Request) string {
+	if ip := net.ParseIP(strings.TrimSpace(r.Header.Get("CF-Connecting-IP"))); ip != nil {
+		return ip.String()
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+func writeRateLimited(w http.ResponseWriter, retryAfter, message string) {
+	w.Header().Set("Retry-After", retryAfter)
+	writeOpenAIError(w, http.StatusTooManyRequests, message, "rate_limit_error", strPtr("rate_limit_exceeded"))
 }
 
 func authorizedRequest(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, chatKey, adminKey string) (authIdentity, bool) {

@@ -2,7 +2,7 @@
 
 import { Check, Loader2, X } from "lucide-react";
 import { McpIcon } from "./ui/McpIcon";
-import type { McpActivity as Activity } from "../../lib/mcpChat";
+import type { McpActivity as Activity } from "../../lib/chat/mcpChat";
 
 export function McpActivity({ activities, onDecision }: {
   activities: Activity[];

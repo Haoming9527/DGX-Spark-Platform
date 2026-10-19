@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ModelUsageChart } from "./ModelUsageChart";
 import { BarChart3, Zap, Activity, HelpCircle } from "lucide-react";
-import { formatCompactNumber } from "../../lib/formatNumber";
+import { formatCompactNumber } from "../../lib/utils/formatNumber";
 
 interface ApiKey {
   id: string;

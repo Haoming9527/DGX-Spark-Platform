@@ -1,20 +1,31 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 export class ApiRequestError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(readonly status: number, message: string, readonly code?: string) {
     super(message);
   }
 }
 
 export function apiFailure(error: unknown, context: string) {
   if (error instanceof ApiRequestError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json(error.code ? { error: error.message, code: error.code } : { error: error.message }, { status: error.status });
   }
   console.error(context, error);
   return NextResponse.json({ error: "Internal server error. Try again shortly." }, { status: 500 });
 }
 
+// Browser-only routes: reject other sites' pages and cross-site fetches. Scripts can forge these headers; BotID covers them.
+export function requireSameOrigin(req: NextRequest) {
+  const site = req.headers.get("sec-fetch-site");
+  if (req.headers.get("origin") !== req.nextUrl.origin || (site !== null && site !== "same-origin")) {
+    throw new ApiRequestError(403, "This request must come from this website.");
+  }
+}
+
 export async function readJsonBody(req: Request, limit = 8192): Promise<Record<string, unknown>> {
+  if (req.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+    throw new ApiRequestError(415, "Send the request body as JSON.");
+  }
   const signal = AbortSignal.any([req.signal, AbortSignal.timeout(10000)]);
   const declaredSize = Number(req.headers.get("content-length"));
   if (declaredSize > limit) throw new ApiRequestError(413, "Request body is too large.");

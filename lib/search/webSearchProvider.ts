@@ -1,5 +1,5 @@
 import "server-only";
-import { ApiRequestError } from "./apiRequest";
+import { ApiRequestError } from "../security/apiRequest";
 import { normalizeSourceUrl, sourceId, type SearchSource } from "./searchEvidence";
 
 function searchFailure(reason: string, status?: number): never {

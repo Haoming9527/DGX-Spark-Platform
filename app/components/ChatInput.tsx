@@ -6,7 +6,7 @@ import { Send, StopCircle, BrainCircuit, Mic, MicOff, ImagePlus, Plus, X, Chevro
 import { McpIcon } from "./ui/McpIcon";
 import { ChatImage } from "../types/chat";
 import Image from "next/image";
-import type { ThinkingMode } from "@/lib/modelThinking";
+import type { ThinkingMode } from "@/lib/models/modelThinking";
 
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
