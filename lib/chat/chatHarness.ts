@@ -17,7 +17,6 @@ export function harnessBudget(deep = false) {
     sourceExcerptUnits: deep ? 1400 : 750,
     evidenceUnits: deep ? 7000 : 4000,
     phaseTokens: deep ? 4096 : 512,
-    // Includes reasoning tokens: light mode also thinks (at a low level) when tools are available.
     answerTokens: deep ? 12288 : 6144,
   };
 }

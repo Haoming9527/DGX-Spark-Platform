@@ -18,7 +18,7 @@ import {
 } from "../../../lib/chat/chatHarness";
 import { ContextBudgetError, estimateContextUnits } from "../../../lib/chat/harnessContext";
 import { trimConversation } from "../../../lib/chat/context";
-import { mcpTools, runSearch, searchTool, toolsExhausted, type ToolUsage } from "../../../lib/chat/chatTools";
+import { mcpTools, runSearch, scriptedToolCall, searchTool, toolsExhausted, type McpToolCatalogEntry, type ToolUsage } from "../../../lib/chat/chatTools";
 import { chatModel, reasoningOptions } from "../../../lib/inference/chatModel";
 import { selectThinkingControl, type ThinkingControl } from "../../../lib/models/modelThinking";
 import type { ChatUIMessage, SearchToolOutput } from "../../types/chat";
@@ -139,6 +139,33 @@ async function planSearchQuery(model: ReturnType<typeof chatModel>, messages: Ch
   return question;
 }
 
+async function planMcpCall(model: ReturnType<typeof chatModel>, messages: ChatUIMessage[], catalog: McpToolCatalogEntry[], deep: boolean, timeZone: string | undefined, signal: AbortSignal) {
+  const conversation = messages.filter(message => message.role !== "system").slice(-4)
+    .map(message => ({ role: message.role, content: clipHarnessText(messageText(message), deep ? 700 : 400) }));
+  try {
+    const { output } = await generateText({
+      model,
+      instructions: `${harnessClock(timeZone)}\n\n${harnessPhasePrompt("plan")}`,
+      prompt: JSON.stringify({
+        conversation, forceSearch: false, webSearchAvailable: false,
+        connectedTools: catalog.map(tool => ({ name: tool.name, description: clipHarnessText(tool.description, 400), parameters: tool.parameters })),
+      }),
+      output: Output.object({ schema: jsonSchema<SearchPlan>(PLAN_SCHEMA as never) }),
+      maxOutputTokens: harnessBudget(deep).phaseTokens,
+      temperature: 0,
+      providerOptions: reasoningOptions(false),
+      abortSignal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+    });
+    const args = output?.arguments;
+    if (output?.toolName && catalog.some(tool => tool.name === output.toolName) && args && typeof args === "object" && !Array.isArray(args)) {
+      return { toolName: output.toolName, input: args as Record<string, unknown> };
+    }
+  } catch {
+    signal.throwIfAborted();
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   let clearCookie = false;
   let releaseLease: (() => void) | undefined;
@@ -171,13 +198,11 @@ export async function POST(req: NextRequest) {
     const usage: ToolUsage = { searches: 0, toolCalls: 0 };
     const model = chatModel(account, options.model);
     const searchOptions = { account, ip, usage, budget, signal: req.signal, cache: new Map<string, SearchToolOutput>() };
-    const tools: ToolSet = options.tools ? {
-      search_web: searchTool({ ...searchOptions, deep: options.deep }),
-      ...(account && cookie ? await mcpTools({
-        account, cookie, connectionIds: options.connectionIds, origin: req.nextUrl.origin, signal: req.signal, usage, budget,
-      }) : {}),
-    } : {};
-    const mcpNames = Object.keys(tools).filter(name => name.startsWith("mcp_"));
+    const mcp = account && cookie && options.tools ? await mcpTools({
+      account, cookie, connectionIds: options.connectionIds, origin: req.nextUrl.origin, signal: req.signal, usage, budget,
+    }) : { tools: {} as ToolSet, catalog: [] as McpToolCatalogEntry[] };
+    const tools: ToolSet = options.tools ? { search_web: searchTool({ ...searchOptions, deep: options.deep }), ...mcp.tools } : {};
+    const mcpNames = Object.keys(mcp.tools);
     const instructions = [harnessClock(options.timeZone), options.tools ? TOOL_POLICY : ""].filter(Boolean);
     const modelMessages = await convertToModelMessages(
       trimConversation(messages, budget, estimateContextUnits(JSON.stringify(instructions)) + 1024 +
@@ -212,6 +237,16 @@ export async function POST(req: NextRequest) {
           if (result.sources.length) instructions.push(searchEvidenceInstruction(result.sources, options.deep));
           else if (result.message) instructions.push(`Web search for this request returned no evidence: ${result.message}`);
         }
+        const planning = !continuing && mcp.catalog.length > 0;
+        if (planning) {
+          if (!started) writer.write({ type: "start" });
+          started = true;
+          writer.write({ type: "data-plan", id: "plan", data: { status: "planning" } });
+        }
+        const scripted = planning
+          ? await planMcpCall(model, messages, mcp.catalog, options.deep, options.timeZone, req.signal) : null;
+        if (planning) writer.write({ type: "data-plan", id: "plan", data: { status: "done" } });
+        const firstModel = scripted ? scriptedToolCall(model, scripted) : model;
         const base = instructions.join("\n\n");
         const preSearchUrls = new Set([...searchOptions.cache.values()].flatMap(output => output.sources.map(source => source.url)));
         const result = streamText({
@@ -222,8 +257,11 @@ export async function POST(req: NextRequest) {
           toolApproval: Object.fromEntries(mcpNames.map(name => [name, "user-approval" as const])),
           experimental_toolApprovalSecret: createHmac("sha256", secret).update("tool-approval").digest(),
           stopWhen: isStepCount(budget.maxModelCalls),
-          prepareStep: ({ stepNumber }) => Object.keys(tools).length && (stepNumber >= budget.maxModelCalls - 1 || toolsExhausted(usage, budget))
-            ? { instructions: `${base}\n\n${BUDGET_EXHAUSTED}` } : undefined,
+          prepareStep: ({ stepNumber }) => {
+            if (stepNumber === 0 && scripted) return { model: firstModel };
+            return Object.keys(tools).length && (stepNumber >= budget.maxModelCalls - 1 || toolsExhausted(usage, budget))
+              ? { instructions: `${base}\n\n${BUDGET_EXHAUSTED}` } : undefined;
+          },
           maxOutputTokens: budget.answerTokens,
           providerOptions: reasoningOptions(options.thinking),
           abortSignal: req.signal,

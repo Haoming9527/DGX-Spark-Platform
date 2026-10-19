@@ -17,7 +17,9 @@ export type McpToolMetadata = { server: string; name: string; url: string };
 
 export type McpToolOutput = { content: string; isError: boolean };
 
-export type ChatUIMessage = UIMessage<ChatMetadata, { search: SearchData }>;
+export type PlanData = { status: "planning" | "done" };
+
+export type ChatUIMessage = UIMessage<ChatMetadata, { search: SearchData; plan: PlanData }>;
 
 export type McpActivity = {
   id: string;

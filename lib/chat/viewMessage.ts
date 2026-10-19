@@ -1,5 +1,5 @@
 import type {
-  ChatUIMessage, McpActivity, McpToolMetadata, McpToolOutput, Message, SearchData, SearchToolOutput,
+  ChatUIMessage, McpActivity, McpToolMetadata, McpToolOutput, Message, PlanData, SearchData, SearchToolOutput,
 } from "../../app/types/chat";
 import type { SearchSource } from "../search/searchEvidence";
 
@@ -92,7 +92,9 @@ export function toViewMessage(message: ChatUIMessage, streaming: boolean, local:
   const isThinking = streaming && !content && last?.type === "reasoning";
   const awaitingApproval = mcpActivity.some(activity => activity.status === "approval");
   const running = mcpActivity.find(activity => activity.status === "running");
+  const planning = streaming && parts.some(part => part.type === "data-plan" && (part.data as PlanData).status === "planning");
   const mcpStatus = !active ? undefined
+    : planning ? "Choosing a connected tool…"
     : awaitingApproval ? "Waiting for your approval…"
       : running ? `Running ${running.name}…`
         : !content && sources.size && !searching ? "Writing answer from sources…" : undefined;

@@ -1,6 +1,6 @@
 import "server-only";
-import { createHash } from "node:crypto";
-import { dynamicTool, jsonSchema, tool, type ToolSet } from "ai";
+import { createHash, randomUUID } from "node:crypto";
+import { dynamicTool, jsonSchema, tool, wrapLanguageModel, type LanguageModel, type ToolSet } from "ai";
 import type { Account } from "../auth/account";
 import { callMcp, connectMcp } from "../mcp/client";
 import { digest } from "../mcp/crypto";
@@ -96,9 +96,10 @@ function requestIdFor(userId: string, toolCallId: string) {
 export async function mcpTools(options: {
   account: Account; cookie: string; connectionIds: string[]; origin: string; signal: AbortSignal;
   usage: ToolUsage; budget: Budget;
-}): Promise<ToolSet> {
+}): Promise<{ tools: ToolSet; catalog: McpToolCatalogEntry[] }> {
   const tools: ToolSet = {};
-  if (!options.connectionIds.length) return tools;
+  const catalog: McpToolCatalogEntry[] = [];
+  if (!options.connectionIds.length) return { tools, catalog };
   await cleanExpiredStates();
   const sessionHash = digest(options.cookie);
   for (const id of options.connectionIds) {
@@ -110,10 +111,12 @@ export async function mcpTools(options: {
       const suffix = createHash("sha256").update(`${id}:${remote.name}`).digest("hex").slice(0, 24);
       const name = `mcp_${remote.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 30)}_${suffix}`;
       const metadata: McpToolMetadata = { server: record.name, name: remote.name, url: record.url };
+      const description = `${record.name}: ${remote.name}. ${remote.description ?? ""}`.slice(0, 2048);
+      catalog.push({ name, description, parameters: remote.inputSchema });
       tools[name] = dynamicTool({
         title: `${record.name} · ${remote.name}`,
         metadata,
-        description: `${record.name}: ${remote.name}. ${remote.description ?? ""}`.slice(0, 2048),
+        description,
         inputSchema: jsonSchema(remote.inputSchema as never),
         execute: async (input, { toolCallId, abortSignal }): Promise<McpToolOutput> => {
           if (toolsExhausted(options.usage, options.budget)) {
@@ -134,5 +137,35 @@ export async function mcpTools(options: {
       });
     }
   }
-  return tools;
+  return { tools, catalog };
+}
+
+export type McpToolCatalogEntry = { name: string; description: string; parameters: Record<string, unknown> };
+
+export function scriptedToolCall(model: LanguageModel, call: { toolName: string; input: Record<string, unknown> }) {
+  if (typeof model === "string") throw new Error("A model instance is required.");
+  const toolCallId = `call_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const usage = {
+    inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+    outputTokens: { total: 0, text: 0, reasoning: 0 },
+  };
+  const finishReason = { unified: "tool-calls" as const, raw: "tool_calls" };
+  const toolCall = { type: "tool-call" as const, toolCallId, toolName: call.toolName, input: JSON.stringify(call.input) };
+  return wrapLanguageModel({
+    model,
+    middleware: {
+      specificationVersion: "v4",
+      wrapGenerate: async () => ({ content: [toolCall], finishReason, usage, warnings: [] }),
+      wrapStream: async () => ({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: "stream-start", warnings: [] });
+            controller.enqueue(toolCall);
+            controller.enqueue({ type: "finish", usage, finishReason });
+            controller.close();
+          },
+        }),
+      }),
+    },
+  });
 }
