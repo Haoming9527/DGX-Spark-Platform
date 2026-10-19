@@ -12,7 +12,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export async function POST(req: NextRequest) {
   try {
     requireSameOrigin(req);
-    await requireHuman();
+    await requireHuman(req);
     if (!await takeRateLimit(`signup:${clientKey(req)}`, { limit: 5, windowMs: 15 * 60 * 1000 })) {
       return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
     }

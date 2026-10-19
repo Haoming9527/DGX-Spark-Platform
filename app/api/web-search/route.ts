@@ -13,7 +13,7 @@ export const maxDuration = 30;
 export async function POST(req: NextRequest) {
   try {
     requireSameOrigin(req);
-    await requireHuman();
+    await requireHuman(req);
     const { account, clearCookie } = await loadOptionalAccount(req);
     if (clearCookie) return unauthorizedResponse(true);
     const ip = clientKey(req);

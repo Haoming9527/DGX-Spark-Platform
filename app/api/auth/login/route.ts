@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     requireSameOrigin(req);
-    await requireHuman();
+    await requireHuman(req);
     if (!await takeRateLimit(`login:${clientKey(req)}`, { limit: 10, windowMs: 15 * 60 * 1000 })) {
       return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
     }

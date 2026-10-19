@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
   let streaming = false;
   try {
     requireSameOrigin(req);
-    await requireHuman();
+    await requireHuman(req);
     const optional = await loadOptionalAccount(req);
     clearCookie = optional.clearCookie;
     if (clearCookie) return reply(NextResponse.json({ error: "Sign in again to continue." }, { status: 401 }), true);
