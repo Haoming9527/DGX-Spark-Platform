@@ -25,14 +25,17 @@ export async function takeRateLimit(
 ): Promise<boolean> {
   const hash = keyHash(`${opts.windowMs}:${key}`);
   try {
-    await prisma.$executeRaw`
-      DELETE FROM rate_limit_buckets
-      WHERE key_hash IN (
-        SELECT key_hash FROM rate_limit_buckets
-        WHERE expires_at <= statement_timestamp()
-        ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED
-      )
-    `;
+    // Expired buckets are reset on their next use, so cleanup only needs to run occasionally.
+    if (Math.random() < 0.02) {
+      await prisma.$executeRaw`
+        DELETE FROM rate_limit_buckets
+        WHERE key_hash IN (
+          SELECT key_hash FROM rate_limit_buckets
+          WHERE expires_at <= statement_timestamp()
+          ORDER BY expires_at LIMIT 500 FOR UPDATE SKIP LOCKED
+        )
+      `;
+    }
     const rows = await prisma.$queryRaw<{ requests: number }[]>`
       INSERT INTO rate_limit_buckets (key_hash, requests, expires_at)
       VALUES (${hash}, 1, statement_timestamp() + ${opts.windowMs} * INTERVAL '1 millisecond')

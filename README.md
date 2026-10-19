@@ -334,6 +334,8 @@ Guests can use every model and feature. These controls keep scripts, embedders, 
 | Gateway keys | Each personal `dgx_sk_` key: `KEY_RPM` requests/minute (default 60) and `KEY_CONCURRENCY` in-flight inference requests (default 4). `0` disables a limit. Service keys are exempt. |
 | Gateway auth | 20 failed authentication attempts per minute per client IP (from `CF-Connecting-IP`), then `429` without a database lookup. The live model list is cached for 5 seconds. |
 
+Each limit check is a database round trip, so keep the Vercel function region next to your Neon database. [vercel.json](vercel.json) sets `sin1` for a Neon project in AWS `ap-southeast-1`; change it to match your database region. The gateway applies model restrictions within 5 seconds, and adds the API reference and live model list to the system prompt only when a conversation is about them (see [system-prompt.md](gateway/system-prompt.md)).
+
 Adjust guest limits in [lib/security/guestLimits.ts](lib/security/guestLimits.ts). Apply [schema.sql](schema.sql) before deploying so `guest_streams` exists.
 
 Optionally, add one Vercel Firewall rate-limit rule (included on Hobby) so floods are rejected before any function runs: **Firewall → Configure → New Rule**, condition *Request Path* equals `/api/chat` and *Method* equals `POST`, action **Rate Limit**, fixed window 60 s, 20 requests, key IP, then 429.

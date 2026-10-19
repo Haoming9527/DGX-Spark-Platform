@@ -33,7 +33,58 @@ var modelCatalogs = struct {
 	entries map[bool]modelCatalogEntry
 }{entries: map[bool]modelCatalogEntry{}}
 
-func renderSystemPrompt(r *http.Request, prompt string, ollaURL *url.URL, gate gateResult, admin bool) string {
+
+func selectPromptSections(raw, conversation string) string {
+	var out []string
+	include := true
+	for _, line := range strings.Split(raw, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "<!-- when:") && strings.HasSuffix(trimmed, "-->"):
+			include = false
+			list := strings.TrimSuffix(strings.TrimPrefix(trimmed, "<!-- when:"), "-->")
+			for _, keyword := range strings.Split(list, ",") {
+				if keyword = strings.ToLower(strings.TrimSpace(keyword)); keyword != "" && strings.Contains(conversation, keyword) {
+					include = true
+					break
+				}
+			}
+		case trimmed == "<!-- end -->":
+			include = true
+		case include:
+			out = append(out, line)
+		}
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
+}
+
+func conversationText(msgs []any) string {
+	var b strings.Builder
+	for _, raw := range msgs {
+		m, ok := raw.(map[string]any)
+		if !ok || str(m["role"]) != "user" {
+			continue
+		}
+		switch content := m["content"].(type) {
+		case string:
+			b.WriteString(content)
+		case []any:
+			for _, part := range content {
+				if p, ok := part.(map[string]any); ok {
+					b.WriteString(str(p["text"]))
+				}
+			}
+		}
+		b.WriteByte('\n')
+		if b.Len() > 64<<10 {
+			break
+		}
+	}
+	return strings.ToLower(b.String())
+}
+
+func renderSystemPrompt(r *http.Request, prompt string, ollaURL *url.URL, gate gateResult, admin bool, msgs []any) string {
+	prompt = selectPromptSections(prompt, conversationText(msgs))
 	if prompt == "" {
 		return ""
 	}
@@ -206,8 +257,9 @@ func shouldInjectSystemPrompt(r *http.Request) bool {
 		strings.HasSuffix(path, "/api/chat")
 }
 
-func injectSystemPrompt(r *http.Request, prompt string) error {
-	if prompt == "" || r.Body == nil {
+
+func injectSystemPrompt(r *http.Request, render func(msgs []any) string) error {
+	if render == nil || r.Body == nil {
 		return nil
 	}
 	body, err := io.ReadAll(r.Body)
@@ -215,18 +267,31 @@ func injectSystemPrompt(r *http.Request, prompt string) error {
 	if err != nil {
 		return err
 	}
+	keep := func() {
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+	}
 
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
-		r.Body = io.NopCloser(bytes.NewReader(body))
-		r.ContentLength = int64(len(body))
+		keep()
 		return nil
 	}
 
 	msgs, ok := payload["messages"].([]any)
 	if !ok {
-		r.Body = io.NopCloser(bytes.NewReader(body))
-		r.ContentLength = int64(len(body))
+		keep()
+		return nil
+	}
+
+	if format, ok := payload["format"]; ok && format != nil {
+		keep()
+		return nil
+	}
+
+	prompt := render(msgs)
+	if prompt == "" {
+		keep()
 		return nil
 	}
 
@@ -235,8 +300,7 @@ func injectSystemPrompt(r *http.Request, prompt string) error {
 			role, _ := m["role"].(string)
 			content, _ := m["content"].(string)
 			if role == "system" && strings.TrimSpace(content) == prompt {
-				r.Body = io.NopCloser(bytes.NewReader(body))
-				r.ContentLength = int64(len(body))
+				keep()
 				return nil
 			}
 		}
@@ -252,8 +316,7 @@ func injectSystemPrompt(r *http.Request, prompt string) error {
 
 	out, err := json.Marshal(payload)
 	if err != nil {
-		r.Body = io.NopCloser(bytes.NewReader(body))
-		r.ContentLength = int64(len(body))
+		keep()
 		return err
 	}
 	r.Body = io.NopCloser(bytes.NewReader(out))

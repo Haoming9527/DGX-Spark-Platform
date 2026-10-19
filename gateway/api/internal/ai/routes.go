@@ -127,7 +127,10 @@ func (s *Server) routes() http.Handler {
 			}
 			if shouldInjectSystemPrompt(r) {
 				if !isRestrictedName(requestedModel, gate.restricted) {
-					if err := injectSystemPrompt(r, renderSystemPrompt(r, promptStore.get(), ollaURL, gate, admin)); err != nil {
+					err := injectSystemPrompt(r, func(msgs []any) string {
+						return renderSystemPrompt(r, promptStore.get(), ollaURL, gate, admin, msgs)
+					})
+					if err != nil {
 						log.Printf("system prompt inject failed: %v", err)
 						writeOpenAIError(rec, http.StatusBadRequest, "Invalid request body.", "invalid_request_error", nil)
 						r = nil

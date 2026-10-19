@@ -24,19 +24,20 @@ export async function requireGuestDailyAllowance(bucket: string, ip: string, lim
 export async function acquireGuestStream(ip: string): Promise<string | null> {
   const hash = keyHash(`guest-stream:${ip}`);
   try {
-    return await prisma.$transaction(async (tx) => {
-      // Serialise lease checks so concurrent requests cannot both see a free slot.
-      await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtext('guest_streams'))) AS lock`;
-      await tx.$executeRaw`DELETE FROM guest_streams WHERE expires_at <= statement_timestamp()`;
-      const rows = await tx.$queryRaw<{ id: string }[]>`
-        INSERT INTO guest_streams (key_hash, expires_at)
-        SELECT ${hash}, statement_timestamp() + ${LEASE_MS} * INTERVAL '1 millisecond'
-        WHERE (SELECT count(*) FROM guest_streams WHERE key_hash = ${hash}) < ${GUEST_PER_IP_CONCURRENCY}
-          AND (SELECT count(*) FROM guest_streams) < ${GUEST_GLOBAL_CONCURRENCY}
-        RETURNING id::text AS id
-      `;
-      return rows[0]?.id ?? null;
-    });
+    // One statement (one database round trip). Expired leases are ignored by the counts and deleted occasionally.
+    // Without a lock, requests arriving in the same instant can slightly exceed a cap; the caps are abuse limits, not exact quotas.
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO guest_streams (key_hash, expires_at)
+      SELECT ${hash}::text, statement_timestamp() + ${LEASE_MS}::int * INTERVAL '1 millisecond'
+      WHERE (SELECT count(*) FROM guest_streams WHERE key_hash = ${hash}::text AND expires_at > statement_timestamp()) < ${GUEST_PER_IP_CONCURRENCY}::int
+        AND (SELECT count(*) FROM guest_streams WHERE expires_at > statement_timestamp()) < ${GUEST_GLOBAL_CONCURRENCY}::int
+      RETURNING id::text AS id
+    `;
+    if (Math.random() < 0.05) {
+      prisma.$executeRaw`DELETE FROM guest_streams WHERE expires_at <= statement_timestamp()`
+        .catch((error: unknown) => console.error("Guest stream cleanup failed:", error));
+    }
+    return rows[0]?.id ?? null;
   } catch (error) {
     console.error("Guest stream lease failed:", error);
     throw new ApiRequestError(503, "Service is temporarily unavailable. Try again shortly.");

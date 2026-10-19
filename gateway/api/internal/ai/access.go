@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,9 +23,29 @@ func normalizeModel(name string) string {
 	return name
 }
 
+// restrictedTTL bounds how long a model restriction change can take to apply; failed lookups are never cached.
+const restrictedTTL = 5 * time.Second
+
+type restrictedEntry struct {
+	set map[string]struct{}
+	at  time.Time
+}
+
+var restrictedCache = struct {
+	sync.Mutex
+	entries map[*pgxpool.Pool]restrictedEntry
+}{entries: map[*pgxpool.Pool]restrictedEntry{}}
+
+// loadRestricted returns a set that callers must treat as read-only.
 func loadRestricted(ctx context.Context, pool *pgxpool.Pool) (map[string]struct{}, bool) {
 	if pool == nil {
 		return nil, false
+	}
+	restrictedCache.Lock()
+	cached, ok := restrictedCache.entries[pool]
+	restrictedCache.Unlock()
+	if ok && time.Since(cached.at) < restrictedTTL {
+		return cached.set, true
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
@@ -48,6 +69,9 @@ func loadRestricted(ctx context.Context, pool *pgxpool.Pool) (map[string]struct{
 	if err := rows.Err(); err != nil {
 		return nil, false
 	}
+	restrictedCache.Lock()
+	restrictedCache.entries[pool] = restrictedEntry{set: next, at: time.Now()}
+	restrictedCache.Unlock()
 	return next, true
 }
 
