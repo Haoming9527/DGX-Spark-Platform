@@ -562,7 +562,9 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
         }
         if (code === "MODEL_CAPABILITY" && capability === "thinking") setUseReasoning(false);
         if (code === "MODEL_CAPABILITY" && capability === "vision") setPendingImages([]);
-        console.error("Chat Error:", error);
+        const expected = ("status" in error && error.status === 429) ||
+          ["SLEEPING", "OFFLINE", "MODEL_UNAVAILABLE", "MODEL_CAPABILITY"].includes(String(code));
+        if (!expected) console.error("Chat Error:", error);
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId

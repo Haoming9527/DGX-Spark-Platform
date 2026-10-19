@@ -21,7 +21,10 @@ export async function requireGuestDailyAllowance(bucket: string, ip: string, lim
   }
 }
 
+const DEV_LEASE = "development";
+
 export async function acquireGuestStream(ip: string): Promise<string | null> {
+  if (process.env.NODE_ENV === "development") return DEV_LEASE;
   const hash = keyHash(`guest-stream:${ip}`);
   try {
     // One statement (one database round trip). Expired leases are ignored by the counts and deleted occasionally.
@@ -45,7 +48,7 @@ export async function acquireGuestStream(ip: string): Promise<string | null> {
 }
 
 export function guestStreamRelease(id: string): () => void {
-  let released = false;
+  let released = id === DEV_LEASE;
   return () => {
     if (released) return;
     released = true;

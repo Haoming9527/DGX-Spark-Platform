@@ -23,6 +23,7 @@ export async function takeRateLimit(
   key: string,
   opts: { limit: number; windowMs: number },
 ): Promise<boolean> {
+  if (process.env.NODE_ENV === "development") return true;
   const hash = keyHash(`${opts.windowMs}:${key}`);
   try {
     // Expired buckets are reset on their next use, so cleanup only needs to run occasionally.

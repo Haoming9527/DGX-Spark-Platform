@@ -47,7 +47,7 @@ async function modelRound(body: Record<string, unknown>, signal: AbortSignal, pr
   if (!response.ok || response.headers.get("content-type")?.includes("application/json")) {
     const result = await response.json().catch(() => ({}));
     throw Object.assign(new Error(result.message || result.error || "Model request failed. Try again."), {
-      code: result.error, capability: result.capability,
+      code: result.code || result.error, capability: result.capability, status: response.status,
     });
   }
   if (!response.body) throw new Error("The model returned an empty response.");
@@ -360,7 +360,7 @@ export async function streamMcpChat(options: {
       signal.throwIfAborted();
       const finalRound = modelCalls === budget.maxModelCalls - 1;
       const bufferAnswer = searchAttempts > 0;
-      const holdAnswer = !selectionChecked || (!!options.useReasoning && bufferAnswer);
+      const holdAnswer = !!options.useReasoning && bufferAnswer;
       const scheduled = plannedCalls.length > 0;
       const toolsAvailable = !finalRound && !toolDeclined && toolAttempts < budget.maxToolCalls;
       content = "";
@@ -383,7 +383,11 @@ export async function streamMcpChat(options: {
       });
       plannedCalls = [];
       if (!result.calls.length) {
-        if (!selectionChecked && modelCalls <= budget.maxModelCalls - 2 && await checkSelection()) continue;
+        if (!selectionChecked && modelCalls <= budget.maxModelCalls - 2 && await checkSelection()) {
+          content = "";
+          display();
+          continue;
+        }
         if (!splitAssistantText(result.content).content.trim()) throw new Error("The model returned no answer. Try again.");
         if (options.useReasoning && bufferAnswer && !reviewed && !toolDeclined && modelCalls <= budget.maxModelCalls - 2) {
           reviewed = true;
