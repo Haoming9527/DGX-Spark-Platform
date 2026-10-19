@@ -23,8 +23,9 @@ export function thinkingMode(model: string, capabilities: string[], metadata: un
   return /(?:^|\/)gpt[-_]?oss(?:[:/-]|$)/i.test(model) ? "levels" : "toggle";
 }
 
-export function selectThinkingControl(model: string, metadata: unknown, enabled: boolean): ThinkingControl {
+export function selectThinkingControl(model: string, metadata: unknown, enabled: boolean, toolUse = false): ThinkingControl {
   const settings = readThinkingMetadata(metadata);
+  if (!enabled && toolUse && (!settings || settings.values.some((value) => value !== false))) return "low";
   if (settings) {
     const preferences = enabled ? ["high", true, "medium", "low"] : [false, "low"];
     for (const value of preferences) {

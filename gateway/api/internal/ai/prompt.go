@@ -257,6 +257,18 @@ func shouldInjectSystemPrompt(r *http.Request) bool {
 		strings.HasSuffix(path, "/api/chat")
 }
 
+func structuredResponse(value any) bool {
+	switch v := value.(type) {
+	case string:
+		typ := strings.ToLower(strings.TrimSpace(v))
+		return typ == "json" || typ == "json_object"
+	case map[string]any:
+		typ := strings.ToLower(strings.TrimSpace(str(v["type"])))
+		return typ == "json" || typ == "json_object" || typ == "json_schema"
+	default:
+		return false
+	}
+}
 
 func injectSystemPrompt(r *http.Request, render func(msgs []any) string) error {
 	if render == nil || r.Body == nil {
@@ -285,6 +297,10 @@ func injectSystemPrompt(r *http.Request, render func(msgs []any) string) error {
 	}
 
 	if format, ok := payload["format"]; ok && format != nil {
+		keep()
+		return nil
+	}
+	if structuredResponse(payload["response_format"]) {
 		keep()
 		return nil
 	}

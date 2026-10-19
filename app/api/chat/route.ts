@@ -1,19 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { gatewayAuthHeaders } from "../../../lib/inference/inferenceGateway";
-import { inferenceKeyForAccount } from "../../../lib/inference/inferenceKey";
+import {
+  APICallError, convertToModelMessages, createUIMessageStream, createUIMessageStreamResponse, generateId, generateText,
+  isStepCount, jsonSchema, Output, safeValidateUIMessages, streamText, toUIMessageStream, type ToolSet,
+} from "ai";
+import { createHmac } from "node:crypto";
 import { loadOptionalAccount } from "../../../lib/auth/requireAccount";
-import { clearSessionCookie } from "../../../lib/auth/auth";
+import { clearSessionCookie, SESSION_COOKIE } from "../../../lib/auth/auth";
 import { clientKey, takeRateLimit } from "../../../lib/security/rateLimit";
 import { ApiRequestError, apiFailure, readJsonBody, requireSameOrigin } from "../../../lib/security/apiRequest";
 import {
-  acquireGuestStream, GUEST_BUSY, GUEST_DAILY_REQUESTS, guestStreamRelease, releaseWhenDone, requireGuestDailyAllowance,
+  acquireGuestStream, GUEST_BUSY, GUEST_DAILY_REQUESTS, GUEST_QUESTIONS_PER_HOUR, GUEST_QUESTIONS_PER_MINUTE,
+  guestStreamRelease, releaseWhenDone, requireGuestDailyAllowance,
 } from "../../../lib/security/guestLimits";
-import { WEB_SEARCH_TOOL } from "../../../lib/search/webSearchTool";
-import { harnessBudget, harnessClock, harnessPhasePrompt, PLAN_SCHEMA, REVIEW_SCHEMA, FOLLOW_UP_SCHEMA } from "../../../lib/chat/chatHarness";
-import { compactMessages, ContextBudgetError, estimateContextUnits, type ContextMessage } from "../../../lib/chat/harnessContext";
-import { selectThinkingControl } from "../../../lib/models/modelThinking";
+import {
+  BUDGET_EXHAUSTED, clipHarnessText, harnessBudget, harnessClock, harnessPhasePrompt, PLAN_SCHEMA, searchEvidenceInstruction,
+  TOOL_POLICY, type SearchPlan,
+} from "../../../lib/chat/chatHarness";
+import { ContextBudgetError, estimateContextUnits } from "../../../lib/chat/harnessContext";
+import { trimConversation } from "../../../lib/chat/context";
+import { mcpTools, runSearch, searchTool, toolsExhausted, type ToolUsage } from "../../../lib/chat/chatTools";
+import { chatModel, reasoningOptions } from "../../../lib/inference/chatModel";
+import { selectThinkingControl, type ThinkingControl } from "../../../lib/models/modelThinking";
+import type { ChatUIMessage, SearchToolOutput } from "../../types/chat";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const IMAGE_TYPES = /^image\/(?:png|jpeg|webp|gif)$/;
 
 function reply(res: Response, clearCookie: boolean) {
   const out = new NextResponse(res.body, { status: res.status, headers: res.headers });
@@ -21,78 +35,108 @@ function reply(res: Response, clearCookie: boolean) {
   return out;
 }
 
-async function readUpstreamError(response: Response, requestSignal: AbortSignal) {
-  if (!response.body) return { message: "", code: "" };
-  const signal = AbortSignal.any([requestSignal, AbortSignal.timeout(3000)]);
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  const cancel = () => { void reader.cancel().catch(() => {}); };
-  signal.addEventListener("abort", cancel, { once: true });
-  try {
-    while (!signal.aborted && size < 8192) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = value.subarray(0, 8192 - size);
-      chunks.push(chunk);
-      size += chunk.byteLength;
-    }
-  } catch {} finally {
-    signal.removeEventListener("abort", cancel);
-    await reader.cancel().catch(() => {});
-    reader.releaseLock();
+function readOptions(body: Record<string, unknown>) {
+  const { model, useReasoning, thinkingControl, webSearch, tools, connectionIds, timeZone } = body;
+  if (typeof model !== "string" || !model.trim() || model.length > 256) throw new ApiRequestError(400, "Choose a model.");
+  if (useReasoning !== undefined && typeof useReasoning !== "boolean") throw new ApiRequestError(400, "Thinking must be true or false.");
+  if (thinkingControl !== undefined && thinkingControl !== null && typeof thinkingControl !== "boolean" &&
+    (typeof thinkingControl !== "string" || !/^[a-zA-Z0-9_-]{1,32}$/.test(thinkingControl))) {
+    throw new ApiRequestError(400, "Invalid model thinking level.");
   }
-  const text = Buffer.concat(chunks, size).toString("utf8");
-  try {
-    const data = JSON.parse(text);
-    const code = typeof data.error?.code === "string" ? data.error.code : typeof data.code === "string" ? data.code : "";
-    if (typeof data.error === "string") return { message: data.error, code };
-    if (typeof data.error?.message === "string") return { message: data.error.message, code };
-    if (typeof data.message === "string") return { message: data.message, code };
-  } catch {}
-  return { message: text, code: "" };
+  if (webSearch !== undefined && typeof webSearch !== "boolean") throw new ApiRequestError(400, "Web search must be true or false.");
+  if (tools !== undefined && typeof tools !== "boolean") throw new ApiRequestError(400, "Tool support must be true or false.");
+  if (connectionIds !== undefined && (!Array.isArray(connectionIds) || connectionIds.length > 8 ||
+    connectionIds.some(id => typeof id !== "string" || !UUID.test(id)))) {
+    throw new ApiRequestError(400, "Invalid MCP selection.");
+  }
+  if (timeZone !== undefined && (typeof timeZone !== "string" || timeZone.length > 100)) throw new ApiRequestError(400, "Invalid time zone.");
+  return {
+    model: model.trim(), deep: useReasoning === true,
+    thinking: (thinkingControl === undefined
+      ? selectThinkingControl(model, undefined, useReasoning === true, tools === true) : thinkingControl) as ThinkingControl,
+    webSearch: webSearch === true, tools: tools === true,
+    connectionIds: [...new Set((connectionIds ?? []) as string[])],
+    timeZone: timeZone as string | undefined,
+  };
 }
 
-function chatTools(value: unknown) {
-  if (!Array.isArray(value) || value.length > 48) {
-    throw new ApiRequestError(400, "Provide at most 48 function tools.");
+async function readMessages(value: unknown) {
+  if (!Array.isArray(value) || !value.length || value.length > 1024) {
+    throw new ApiRequestError(400, "Provide a conversation of at most 1,024 messages.");
   }
-  if (Buffer.byteLength(JSON.stringify(value), "utf8") > 64 * 1024) {
-    throw new ApiRequestError(413, "Tool definitions exceed 64 KiB. Select fewer MCP servers.");
-  }
-  const names = new Set<string>();
-  return value.map((tool) => {
-    const fn = tool?.function;
-    if (tool?.type !== "function" || !fn || typeof fn !== "object" || Array.isArray(fn) ||
-      typeof fn.name !== "string" || !/^[a-zA-Z0-9_-]{1,64}$/.test(fn.name) || names.has(fn.name) ||
-      (fn.description !== undefined && (typeof fn.description !== "string" || fn.description.length > 2048)) ||
-      !fn.parameters || typeof fn.parameters !== "object" || Array.isArray(fn.parameters) || fn.parameters.type !== "object") {
-      throw new ApiRequestError(400, "Invalid function tool definition.");
+  const result = await safeValidateUIMessages<ChatUIMessage>({ messages: value });
+  if (!result.success) throw new ApiRequestError(400, "Invalid chat message.");
+  for (const message of result.data) {
+    for (const part of message.parts) {
+      // Only inline images: URLs would make the server fetch arbitrary addresses on the client's behalf.
+      if (part.type === "file" && (message.role !== "user" || !IMAGE_TYPES.test(part.mediaType) || !part.url.startsWith("data:"))) {
+        throw new ApiRequestError(400, "Attach images as PNG, JPEG, WebP or GIF files.");
+      }
     }
-    names.add(fn.name);
-    return { type: "function", function: { name: fn.name, description: fn.description, parameters: fn.parameters } };
-  });
+  }
+  return result.data;
 }
 
-function chatMessages(value: unknown): ContextMessage[] {
-  if (!Array.isArray(value) || value.length > 1024) throw new ApiRequestError(400, "Provide a conversation of at most 1,024 messages.");
-  for (const message of value) {
-    if (!message || typeof message !== "object" || !["system", "developer", "user", "assistant", "tool"].includes(message.role) ||
-      typeof message.content !== "string" || (message.thinking !== undefined && typeof message.thinking !== "string") ||
-      (message.images !== undefined && (!Array.isArray(message.images) || message.images.some((image: unknown) => typeof image !== "string"))) ||
-      (message.tool_name !== undefined && typeof message.tool_name !== "string") ||
-      (message.tool_call_id !== undefined && typeof message.tool_call_id !== "string")) {
-      throw new ApiRequestError(400, "Invalid chat message.");
-    }
-    if (message.tool_calls !== undefined && (!Array.isArray(message.tool_calls) || message.tool_calls.length > 8 ||
-      message.tool_calls.some((call: { id?: unknown; function?: { name?: unknown; arguments?: unknown } }) =>
-        !call || typeof call.function?.name !== "string" || !/^[a-zA-Z0-9_-]{1,64}$/.test(call.function.name) ||
-        !call.function.arguments || typeof call.function.arguments !== "object" || Array.isArray(call.function.arguments) ||
-        (call.id !== undefined && typeof call.id !== "string")))) {
-      throw new ApiRequestError(400, "Invalid tool call history.");
-    }
+function messageText(message: ChatUIMessage) {
+  return message.parts.flatMap(part => part.type === "text" ? [part.text] : []).join("\n");
+}
+
+// Error text shown in the chat. A leading [CODE] or [CODE:capability] lets the client react (refresh models,
+// turn off thinking, mark the server as sleeping) the same way it did for the previous JSON errors.
+function chatErrorMessage(error: unknown): string {
+  if (typeof error === "string") return error; // Already mapped by the inner stream.
+  if (error instanceof ApiRequestError) return error.message;
+  if (error instanceof ContextBudgetError) return error.message;
+  const status = APICallError.isInstance(error) ? error.statusCode : undefined;
+  const text = APICallError.isInstance(error) ? `${error.message} ${error.responseBody ?? ""}` : error instanceof Error ? error.message : "";
+  if (/model_endpoint_mismatch/.test(text)) {
+    return "[MODEL_CAPABILITY:chat] This model supports System One decisions. Use POST /v1/systemone, or choose a chat model.";
   }
-  return value;
+  if (status === undefined && /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|socket/i.test(text)) {
+    return "[OFFLINE] The AI gateway is currently unavailable.";
+  }
+  if (status !== undefined && [530, 502, 401].includes(status)) return "[OFFLINE] The AI gateway is currently unavailable.";
+  if (status === 503 || /NO_ENDPOINTS|no healthy endpoints|service_unavailable/i.test(text)) return "[SLEEPING] No AI servers are online.";
+  if (status === 404 || /model ['"][^'"]+['"] not found|model not found/i.test(text)) {
+    return "[MODEL_UNAVAILABLE] That model is not available. Choose another model.";
+  }
+  if (/does not support thinking/i.test(text)) return "[MODEL_CAPABILITY:thinking] This model does not support thinking. Turn it off or pick another model.";
+  if (/does not support (images|vision)/i.test(text)) return "[MODEL_CAPABILITY:vision] This model does not accept images. Remove attachments or pick a vision model.";
+  if (/does not support (tools|tool calling|function calling)/i.test(text)) {
+    return "[MODEL_CAPABILITY:tools] This model does not support automatic search or MCP tools. Choose a model with tool support.";
+  }
+  if (/\bCUDA (?:error|out of memory)\b|\brunner (?:process |server )?(?:has )?(?:terminated|crashed|exited|failed|unexpectedly stopped)\b/i.test(text)) {
+    return "[MODEL_RUNTIME] The AI inference runner failed. It may need to be restarted on the AI server.";
+  }
+  console.error(`Chat stream failed: ${JSON.stringify({
+    status, name: error instanceof Error ? error.name : typeof error, message: text.slice(0, 300),
+  })}`);
+  return "The model request failed. Try again or pick another model.";
+}
+
+async function planSearchQuery(model: ReturnType<typeof chatModel>, messages: ChatUIMessage[], deep: boolean, timeZone: string | undefined, signal: AbortSignal) {
+  const question = messageText(messages.findLast(message => message.role === "user")!).slice(0, 1000);
+  // A short first message is already a standalone query; planning only helps resolve follow-ups from context.
+  if (messages.filter(message => message.role === "user").length === 1 && question.length <= 200) return question;
+  const conversation = messages.filter(message => message.role !== "system").slice(-4)
+    .map(message => ({ role: message.role, content: clipHarnessText(messageText(message), deep ? 700 : 400) }));
+  try {
+    const { output } = await generateText({
+      model,
+      instructions: `${harnessClock(timeZone)}\n\n${harnessPhasePrompt("plan")}`,
+      prompt: JSON.stringify({ conversation, forceSearch: true, webSearchAvailable: true, connectedTools: [] }),
+      output: Output.object({ schema: jsonSchema<SearchPlan>(PLAN_SCHEMA as never) }),
+      maxOutputTokens: harnessBudget(deep).phaseTokens,
+      temperature: 0,
+      providerOptions: reasoningOptions(false),
+      abortSignal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+    });
+    const query = output?.arguments?.query;
+    if (typeof query === "string" && query.trim() && query.length <= 1000) return query;
+  } catch {
+    signal.throwIfAborted();
+  }
+  return question;
 }
 
 export async function POST(req: NextRequest) {
@@ -106,65 +150,40 @@ export async function POST(req: NextRequest) {
     if (clearCookie) return reply(NextResponse.json({ error: "Sign in again to continue." }, { status: 401 }), true);
     const account = optional.account;
     const ip = clientKey(req);
+    // One request covers a whole question (all of its steps, searches and tool calls).
     const overLimit = account
       ? !await takeRateLimit(`chat:${account.id}`, { limit: 30, windowMs: 60_000 })
-      : !await takeRateLimit(`chat-anon:${ip}`, { limit: 5, windowMs: 60_000 }) ||
-        !await takeRateLimit(`chat-anon-hour:${ip}`, { limit: 30, windowMs: 60 * 60 * 1000 });
-    if (overLimit) {
-      return reply(NextResponse.json({ error: "Too many requests." }, { status: 429 }), clearCookie);
-    }
+      : !await takeRateLimit(`chat-anon:${ip}`, { limit: GUEST_QUESTIONS_PER_MINUTE, windowMs: 60_000 }) ||
+        !await takeRateLimit(`chat-anon-hour:${ip}`, { limit: GUEST_QUESTIONS_PER_HOUR, windowMs: 60 * 60 * 1000 });
+    if (overLimit) return reply(NextResponse.json({ error: "Too many requests. Wait a moment and try again." }, { status: 429 }), clearCookie);
     if (!account) await requireGuestDailyAllowance("chat-anon-day", ip, GUEST_DAILY_REQUESTS);
 
-    const { messages: rawMessages, model, useReasoning, thinkingControl, tools, webSearch, harnessPhase, timeZone } = await readJsonBody(req, 48 * 1024 * 1024);
-    const messages = chatMessages(rawMessages);
-    if (useReasoning !== undefined && typeof useReasoning !== "boolean") {
-      throw new ApiRequestError(400, "Thinking must be true or false.");
-    }
-    if (thinkingControl !== undefined && thinkingControl !== null && typeof thinkingControl !== "boolean" &&
-      (typeof thinkingControl !== "string" || !/^[a-zA-Z0-9_-]{1,32}$/.test(thinkingControl))) {
-      throw new ApiRequestError(400, "Invalid model thinking level.");
-    }
-    if (harnessPhase !== undefined && harnessPhase !== "plan" && harnessPhase !== "review" && harnessPhase !== "followups") {
-      throw new ApiRequestError(400, "Invalid chat planning step.");
-    }
-    if (timeZone !== undefined && (typeof timeZone !== "string" || timeZone.length > 100)) {
-      throw new ApiRequestError(400, "Invalid time zone.");
-    }
-    if (webSearch !== undefined && typeof webSearch !== "boolean") {
-      throw new ApiRequestError(400, "Web search must be true or false.");
-    }
-    let validatedTools;
-    if (tools !== undefined) {
-      if (!account) throw new ApiRequestError(401, "Sign in to use MCP tools.");
-      validatedTools = chatTools(tools);
-    }
-    if (webSearch === true) {
-      validatedTools = chatTools([...(validatedTools ?? []), WEB_SEARCH_TOOL]);
-    }
-    const { base, apiKey } = inferenceKeyForAccount(account);
-    const budget = harnessBudget(useReasoning === true);
-    const format = harnessPhase === "followups" ? FOLLOW_UP_SCHEMA : harnessPhase ? (harnessPhase === "plan" ? PLAN_SCHEMA : REVIEW_SCHEMA) : undefined;
-    const context = webSearch || harnessPhase || timeZone !== undefined ? [{ role: "system", content: [
-      harnessClock(timeZone as string | undefined), ...(harnessPhase ? [harnessPhasePrompt(harnessPhase)] : []),
-    ].join("\n\n") }, ...messages] : messages;
-    const prepared = compactMessages(context, budget,
-      estimateContextUnits(JSON.stringify(harnessPhase ? [] : validatedTools ?? [])) +
-      estimateContextUnits(JSON.stringify(format ?? {})));
-    const payload: Record<string, unknown> = {
-      model: model || "qwen3.6:35b-a3b",
-      messages: prepared.messages,
-      stream: true,
-      options: { num_predict: harnessPhase === "followups" ? 256 : harnessPhase ? budget.phaseTokens : budget.answerTokens,
-        ...(harnessPhase ? { temperature: 0 } : {}) },
-    };
-    if (harnessPhase) {
-      payload.format = format;
-    } else if (validatedTools) payload.tools = validatedTools;
-    payload.think = harnessPhase === "followups"
-      ? selectThinkingControl(String(payload.model), undefined, false)
-      : thinkingControl === undefined
-      ? selectThinkingControl(String(payload.model), undefined, useReasoning === true)
-      : thinkingControl;
+    const body = await readJsonBody(req, 48 * 1024 * 1024);
+    const options = readOptions(body);
+    const messages = await readMessages(body.messages);
+    const continuing = messages.at(-1)?.role === "assistant";
+    const preSearch = !continuing && options.webSearch;
+    if (options.connectionIds.length && !options.tools) throw new ApiRequestError(400, "Choose a model that supports tools, or deselect your MCP servers.");
+    const cookie = req.cookies.get(SESSION_COOKIE)?.value;
+    if (options.connectionIds.length && (!account || !cookie)) throw new ApiRequestError(401, "Sign in to use MCP tools.");
+
+    const budget = harnessBudget(options.deep);
+    const usage: ToolUsage = { searches: 0, toolCalls: 0 };
+    const model = chatModel(account, options.model);
+    const searchOptions = { account, ip, usage, budget, signal: req.signal, cache: new Map<string, SearchToolOutput>() };
+    const tools: ToolSet = options.tools ? {
+      search_web: searchTool({ ...searchOptions, deep: options.deep }),
+      ...(account && cookie ? await mcpTools({
+        account, cookie, connectionIds: options.connectionIds, origin: req.nextUrl.origin, signal: req.signal, usage, budget,
+      }) : {}),
+    } : {};
+    const mcpNames = Object.keys(tools).filter(name => name.startsWith("mcp_"));
+    const instructions = [harnessClock(options.timeZone), options.tools ? TOOL_POLICY : ""].filter(Boolean);
+    const modelMessages = await convertToModelMessages(
+      trimConversation(messages, budget, estimateContextUnits(JSON.stringify(instructions)) + 1024 +
+        Object.keys(tools).length * 512),
+      { tools, ignoreIncompleteToolCalls: true, convertDataPart: () => undefined },
+    );
 
     if (!account) {
       const lease = await acquireGuestStream(ip);
@@ -172,131 +191,84 @@ export async function POST(req: NextRequest) {
       releaseLease = guestStreamRelease(lease);
     }
 
-    const response = await fetch(`${base}/olla/ollama/api/chat`, {
-      method: "POST",
-      headers: gatewayAuthHeaders(apiKey, { "Content-Type": "application/json" }),
-      body: JSON.stringify(payload),
-      signal: AbortSignal.any([req.signal, AbortSignal.timeout(harnessPhase === "followups" ? 20000 : 180000)]),
+    const secret = process.env.JWT_SECRET!;
+    const startedAt = Date.now();
+    const stream = createUIMessageStream<ChatUIMessage>({
+      originalMessages: messages,
+      generateId,
+      onError: chatErrorMessage,
+      execute: async ({ writer }) => {
+        let started = false;
+        if (preSearch) {
+          writer.write({ type: "start" });
+          started = true;
+          writer.write({ type: "data-search", id: "search", data: { status: "searching" } });
+          const query = await planSearchQuery(model, messages, options.deep, options.timeZone, req.signal);
+          const result = await runSearch(query, searchOptions);
+          writer.write({
+            type: "data-search", id: "search",
+            data: { status: result.sources.length ? "done" : "failed", query: result.query, sources: result.sources, message: result.message },
+          });
+          if (result.sources.length) instructions.push(searchEvidenceInstruction(result.sources, options.deep));
+          else if (result.message) instructions.push(`Web search for this request returned no evidence: ${result.message}`);
+        }
+        const base = instructions.join("\n\n");
+        const preSearchUrls = new Set([...searchOptions.cache.values()].flatMap(output => output.sources.map(source => source.url)));
+        const result = streamText({
+          model,
+          instructions: base,
+          messages: modelMessages,
+          tools,
+          toolApproval: Object.fromEntries(mcpNames.map(name => [name, "user-approval" as const])),
+          experimental_toolApprovalSecret: createHmac("sha256", secret).update("tool-approval").digest(),
+          stopWhen: isStepCount(budget.maxModelCalls),
+          prepareStep: ({ stepNumber }) => Object.keys(tools).length && (stepNumber >= budget.maxModelCalls - 1 || toolsExhausted(usage, budget))
+            ? { instructions: `${base}\n\n${BUDGET_EXHAUSTED}` } : undefined,
+          maxOutputTokens: budget.answerTokens,
+          providerOptions: reasoningOptions(options.thinking),
+          abortSignal: req.signal,
+          timeout: { totalMs: 290_000 },
+        });
+        writer.merge(toUIMessageStream<ToolSet, ChatUIMessage>({ stream: result.stream, sendStart: !started, sendFinish: false, onError: chatErrorMessage }));
+        let steps;
+        try {
+          steps = await result.steps;
+        } catch {
+          return; // The error was already sent to the client by the stream above.
+        }
+        let tokens = steps.reduce((sum, step) => sum + (step.usage.outputTokens ?? 0), 0);
+        const last = steps.at(-1);
+        const awaitingApproval = last?.content.some(part => part.type === "tool-approval-request");
+        if (last && !last.text.trim() && last.finishReason === "tool-calls" && !awaitingApproval) {
+          // The step limit ended the loop on another tool call: answer from the evidence gathered so far.
+          const sources = [...new Map([...searchOptions.cache.values()].flatMap(output => output.sources)
+            .filter(source => !preSearchUrls.has(source.url)).map(source => [source.url, source])).values()];
+          const final = streamText({
+            model,
+            instructions: [base, sources.length ? searchEvidenceInstruction(sources, options.deep) : "", BUDGET_EXHAUSTED].filter(Boolean).join("\n\n"),
+            messages: modelMessages,
+            maxOutputTokens: budget.answerTokens,
+            providerOptions: reasoningOptions(options.thinking),
+            abortSignal: req.signal,
+            timeout: { totalMs: 120_000 },
+          });
+          writer.merge(toUIMessageStream<ToolSet, ChatUIMessage>({ stream: final.stream, sendStart: false, sendFinish: false, onError: chatErrorMessage }));
+          try {
+            tokens += (await final.totalUsage).outputTokens ?? 0;
+          } catch {
+            return;
+          }
+        }
+        writer.write({ type: "finish", messageMetadata: { tokens, durationMs: Date.now() - startedAt } });
+      },
     });
 
-    if (!response.ok) {
-      const upstreamError = await readUpstreamError(response, req.signal);
-      const upstream = upstreamError.message;
-      const jsonHeaders = { "Content-Type": "application/json" };
-      if (response.status === 400 && upstreamError.code === "model_endpoint_mismatch") {
-        return reply(NextResponse.json({
-          error: "MODEL_CAPABILITY", capability: "chat",
-          message: "This model supports System One decisions. Use POST /v1/systemone, or choose a chat model.",
-        }, { status: 400 }), clearCookie);
-      }
-      if ([530, 502, 401].includes(response.status)) {
-        return reply(
-          new Response(
-            JSON.stringify({ error: "OFFLINE", message: "DGX Spark gateway is currently unavailable." }),
-            { status: response.status, headers: jsonHeaders }
-          ),
-          clearCookie
-        );
-      }
-      if (
-        response.status === 503 ||
-        /NO_ENDPOINTS|no healthy endpoints|service_unavailable/i.test(upstream)
-      ) {
-        return reply(
-          new Response(
-            JSON.stringify({ error: "SLEEPING", message: "No AI servers are online." }),
-            { status: response.status, headers: jsonHeaders }
-          ),
-          clearCookie
-        );
-      }
-      if (response.status === 404 || /model ['"][^'"]+['"] not found/i.test(upstream) || /model not found/i.test(upstream)) {
-        return reply(
-          new Response(
-            JSON.stringify({
-              error: "MODEL_UNAVAILABLE",
-              message: "That model is not available. Choose another model.",
-            }),
-            { status: response.status, headers: jsonHeaders }
-          ),
-          clearCookie
-        );
-      }
-      if (response.status === 400 && /does not support thinking/i.test(upstream)) {
-        return reply(
-          new Response(
-            JSON.stringify({
-              error: "MODEL_CAPABILITY",
-              capability: "thinking",
-              message: "This model does not support thinking. Turn it off or pick another model.",
-            }),
-            { status: response.status, headers: jsonHeaders }
-          ),
-          clearCookie
-        );
-      }
-      if (response.status === 400 && /does not support (images|vision)/i.test(upstream)) {
-        return reply(
-          new Response(
-            JSON.stringify({
-              error: "MODEL_CAPABILITY",
-              capability: "vision",
-              message: "This model does not accept images. Remove attachments or pick a vision model.",
-            }),
-            { status: response.status, headers: jsonHeaders }
-          ),
-          clearCookie
-        );
-      }
-      if (response.status === 400 && /does not support (tools|tool calling|function calling)/i.test(upstream)) {
-        return reply(
-          new Response(
-            JSON.stringify({
-              error: "MODEL_CAPABILITY",
-              capability: "tools",
-              message: "This model does not support automatic search or MCP tools. Choose a model with tool support.",
-            }),
-            { status: response.status, headers: jsonHeaders }
-          ),
-          clearCookie
-        );
-      }
-      const cudaFailure = /\bCUDA (?:error|out of memory)\b/i.test(upstream);
-      const runnerFailure = /\brunner (?:process |server )?(?:has )?(?:terminated|crashed|exited|failed|unexpectedly stopped)\b|\berror (?:was )?encountered while running the model\b/i.test(upstream);
-      if (cudaFailure || runnerFailure) {
-        console.error("Gateway error", { status: response.status, reason: cudaFailure ? "cuda_error" : "runner_error" });
-        return reply(NextResponse.json({
-          error: "MODEL_RUNTIME",
-          message: "The AI inference runner failed. It may need to be restarted on the AI server.",
-        }, { status: response.status }), clearCookie);
-      }
-      console.error("Gateway error", { status: response.status, reason: "upstream_error" });
-      return reply(
-        new Response(
-          JSON.stringify({
-            error: "UPSTREAM",
-            message: "The model request failed. Try again or pick another model.",
-          }),
-          { status: response.status, headers: jsonHeaders }
-        ),
-        clearCookie
-      );
-    }
-
-    const body = releaseLease && response.body ? releaseWhenDone(response.body, releaseLease, req.signal) : response.body;
-    streaming = body !== null;
-    return reply(
-      new Response(body, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        },
-      }),
-      clearCookie
-    );
+    const response = createUIMessageStreamResponse({ stream });
+    const output = releaseLease && response.body ? releaseWhenDone(response.body, releaseLease, req.signal) : response.body;
+    streaming = output !== null;
+    return reply(new Response(output, { status: response.status, headers: response.headers }), clearCookie);
   } catch (error: unknown) {
-    if (error instanceof ContextBudgetError) return reply(NextResponse.json({ error: error.message }, { status: 413 }), clearCookie);
+    if (error instanceof ContextBudgetError) return reply(NextResponse.json({ error: error.message, code: error.code }, { status: 413 }), clearCookie);
     return reply(apiFailure(error, "Chat request failed:"), clearCookie);
   } finally {
     if (!streaming) releaseLease?.();

@@ -36,7 +36,7 @@ A separate Linux server hosts the gateway so power controls remain reachable whe
 
 - **Chat with local models** — streamed responses, model selection, reasoning output for supported models, and browser-supported voice input.
 - **Choose thinking effort** — light mode answers faster; **Thinking** adds deeper reasoning and more research checks. History, tool evidence, and output are capped; old reasoning is not resent. Ollama retains its configured context size.
-- **Search the web** — models search when needed; **+ → Search** requires a search. [LangSearch](https://langsearch.com) returns source text and citations. Set `LANGSEARCH_KEY` on the server, including in Vercel. Source text is capped to keep context bounded.
+- **Search the web** — tool-capable models call search when they decide it's needed; **+ → Search** searches before every answer (also for models without tool support). [LangSearch](https://langsearch.com) returns source text and citations. Set `LANGSEARCH_KEY` on the server, including in Vercel. Source text is capped to keep context bounded.
 - **Connect MCP tools** — add your own servers, choose authentication, and approve each tool call in web chat.
 - **Use your own clients** — an OpenAI-compatible API with personal `dgx_sk_*` keys, key management, and usage reporting.
 - **Make typed decisions** — Clef and Clef Flash classify, estimate probabilities, and score through `/v1/systemone`, separate from chat.
@@ -327,9 +327,9 @@ Guests can use every model and feature. These controls keep scripts, embedders, 
 | Layer | Control |
 | --- | --- |
 | Embedding | `frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN` stop other sites framing the app. |
-| Same-origin | Chat, search, login, and signup accept only same-origin `application/json` requests. |
-| Guest concurrency | At most 2 streaming replies per guest IP and 4 guest replies across the site, so guests never fill the GPU for signed-in users. Tracked in `guest_streams`; a lease expires after 200 seconds if a function stops. |
-| Guest allowance | Per IP: 5 chat requests/minute, 30/hour, and 120/day (one turn with search and review uses several). Web search: 5/minute, 15/hour, 60/day. Signed-in users keep 30 chat requests/minute. |
+| Same-origin | Chat, follow-ups, login, and signup accept only same-origin `application/json` requests. |
+| Guest concurrency | At most 2 streaming replies per guest IP and 4 guest replies across the site, so guests never fill the GPU for signed-in users. Tracked in `guest_streams` and held for the whole answer; a lease expires after 310 seconds if a function stops. |
+| Guest allowance | Per IP, counted per question (one `/api/chat` request runs the whole answer, including its searches and tool steps): 3/minute, 10/hour, and 40/day. Searches inside answers: 5/minute, 15/hour, 60/day. Follow-up suggestions: 10/minute. Signed-in users keep 30 questions/minute. Development mode (`npm run dev`) skips these limits. |
 | Status endpoints | `/api/models` and `/api/status`: 60 requests/minute per IP. |
 | Gateway keys | Each personal `dgx_sk_` key: `KEY_RPM` requests/minute (default 60) and `KEY_CONCURRENCY` in-flight inference requests (default 4). `0` disables a limit. Service keys are exempt. |
 | Gateway auth | 20 failed authentication attempts per minute per client IP (from `CF-Connecting-IP`), then `429` without a database lookup. The live model list is cached for 5 seconds. |

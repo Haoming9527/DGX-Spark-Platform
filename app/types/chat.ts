@@ -1,7 +1,34 @@
+import type { UIMessage } from "ai";
 import type { ThinkingMetadata, ThinkingMode } from "@/lib/models/modelThinking";
-import type { McpActivity, McpChatMessage } from "@/lib/chat/mcpChat";
 import type { SearchSource } from "@/lib/search/searchEvidence";
 
+export type ChatMetadata = { tokens?: number; durationMs?: number };
+
+export type SearchData = {
+  status: "searching" | "done" | "failed";
+  query?: string;
+  sources?: SearchSource[];
+  message?: string;
+};
+
+export type SearchToolOutput = { query: string; serverTime?: string; message?: string; sources: SearchSource[] };
+
+export type McpToolMetadata = { server: string; name: string; url: string };
+
+export type McpToolOutput = { content: string; isError: boolean };
+
+export type ChatUIMessage = UIMessage<ChatMetadata, { search: SearchData }>;
+
+export type McpActivity = {
+  id: string;
+  server: string;
+  url: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  status: "approval" | "running" | "completed" | "declined" | "failed" | "cancelled" | "unknown";
+};
+
+// View model rendered by MessageBubble and ResponseActivity, derived from ChatUIMessage.
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -16,7 +43,6 @@ export interface Message {
   followUps?: string[];
   mcpActivity?: McpActivity[];
   mcpStatus?: string;
-  mcpContext?: McpChatMessage[];
   responseStartedAt?: number;
   responseFinishedAt?: number;
   responseStatus?: "running" | "complete" | "stopped" | "error";

@@ -2,7 +2,11 @@
 
 import { Check, Loader2, X } from "lucide-react";
 import { McpIcon } from "./ui/McpIcon";
-import type { McpActivity as Activity } from "../../lib/chat/mcpChat";
+import type { McpActivity as Activity } from "../types/chat";
+
+function origin(url: string) {
+  try { return new URL(url).origin; } catch { return ""; }
+}
 
 export function McpActivity({ activities, onDecision }: {
   activities: Activity[];
@@ -17,7 +21,7 @@ export function McpActivity({ activities, onDecision }: {
           <McpIcon className="mt-0.5 h-4 w-4 shrink-0" />}
         <div className="min-w-0 flex-1">
           <p className="break-words font-semibold">{activity.server} · {activity.name}</p>
-          <p className="mt-0.5 break-all text-xs text-muted">{new URL(activity.url).origin}</p>
+          {origin(activity.url) && <p className="mt-0.5 break-all text-xs text-muted">{origin(activity.url)}</p>}
         </div>
         {activity.status !== "approval" && <span className="shrink-0 text-xs capitalize text-muted">{activity.status === "unknown" ? "Result unknown" : activity.status}</span>}
       </div>

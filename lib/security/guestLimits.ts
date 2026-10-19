@@ -6,11 +6,13 @@ import { keyHash, takeRateLimit } from "./rateLimit";
 
 export const GUEST_PER_IP_CONCURRENCY = 2;
 export const GUEST_GLOBAL_CONCURRENCY = 4;
-export const GUEST_DAILY_REQUESTS = 120;
+
+export const GUEST_QUESTIONS_PER_MINUTE = 3;
+export const GUEST_QUESTIONS_PER_HOUR = 10;
+export const GUEST_DAILY_REQUESTS = 40;
 export const GUEST_DAILY_SEARCHES = 60;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-const LEASE_MS = 200_000;
+const LEASE_MS = 310_000;
 
 export const GUEST_BUSY = "GUEST_BUSY";
 export const GUEST_DAILY_LIMIT = "GUEST_DAILY_LIMIT";
