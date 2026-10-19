@@ -34,6 +34,7 @@ services:
       OLLA_URL: http://olla:40114
       API_LISTEN: ":8080"
       SYSTEM_PROMPT_FILE: /config/system-prompt.md
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-}
       KEY_RPM: ${KEY_RPM:-60}
       KEY_CONCURRENCY: ${KEY_CONCURRENCY:-4}
       DB_MAX_CONNS: ${DB_MAX_CONNS:-8}

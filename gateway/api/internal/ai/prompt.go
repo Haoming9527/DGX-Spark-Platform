@@ -2,16 +2,136 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+const (
+	modelCatalogTTL     = 30 * time.Second
+	modelCatalogTimeout = 3 * time.Second
+	modelCatalogMax     = 40
+)
+
+type modelCatalogEntry struct {
+	text string
+	at   time.Time
+}
+
+var modelCatalogs = struct {
+	sync.Mutex
+	entries map[bool]modelCatalogEntry
+}{entries: map[bool]modelCatalogEntry{}}
+
+func renderSystemPrompt(r *http.Request, prompt string, ollaURL *url.URL, gate gateResult, admin bool) string {
+	if prompt == "" {
+		return ""
+	}
+	if strings.Contains(prompt, "{{API_URL}}") {
+		prompt = strings.ReplaceAll(prompt, "{{API_URL}}", publicAPIURL(r))
+	}
+	if strings.Contains(prompt, "{{MODELS}}") {
+		prompt = strings.ReplaceAll(prompt, "{{MODELS}}", modelCatalog(r.Context(), ollaURL, gate, admin))
+	}
+	return prompt
+}
+
+func publicAPIURL(r *http.Request) string {
+	if configured := strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_API_URL")), "/"); configured != "" {
+		return configured
+	}
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
+
+func modelCatalog(ctx context.Context, ollaURL *url.URL, gate gateResult, admin bool) string {
+	modelCatalogs.Lock()
+	entry, ok := modelCatalogs.entries[admin]
+	modelCatalogs.Unlock()
+	if ok && time.Since(entry.at) < modelCatalogTTL {
+		return entry.text
+	}
+	models := make([]map[string]any, len(gate.live))
+	for i, m := range gate.live {
+		models[i] = maps.Clone(m)
+	}
+	models = filterModelsByAllowlist(models, gate.restricted, admin)
+	endpoints, _ := listHealthyOllamaEndpoints(ollaURL)
+	lookupCtx, cancel := context.WithTimeout(ctx, modelCatalogTimeout)
+	defer cancel()
+	models = attachCapabilities(lookupCtx, models, endpoints)
+	text := formatModelCatalog(models)
+	if lookupCtx.Err() == nil {
+		modelCatalogs.Lock()
+		modelCatalogs.entries[admin] = modelCatalogEntry{text: text, at: time.Now()}
+		modelCatalogs.Unlock()
+	}
+	return text
+}
+
+func formatModelCatalog(models []map[string]any) string {
+	if len(models) == 0 {
+		return "- None online right now; the inference server may be asleep or offline."
+	}
+	var b strings.Builder
+	for i, m := range models {
+		if i == modelCatalogMax {
+			fmt.Fprintf(&b, "- …and %d more (see `GET /v1/models`)\n", len(models)-modelCatalogMax)
+			break
+		}
+		name := modelName(m)
+		if name == "" {
+			continue
+		}
+		b.WriteString("- `" + name + "`")
+		if details, ok := m["details"].(map[string]any); ok {
+			if size, ok := details["parameter_size"].(string); ok && strings.TrimSpace(size) != "" {
+				b.WriteString(" (" + strings.TrimSpace(size) + ")")
+			}
+		}
+		if labels := capabilityLabels(capabilitiesFromModel(m)); labels != "" {
+			b.WriteString(": " + labels)
+		}
+		b.WriteByte('\n')
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func capabilityLabels(caps []string) string {
+	has := make(map[string]bool, len(caps))
+	for _, c := range caps {
+		has[strings.ToLower(strings.TrimSpace(c))] = true
+	}
+	switch {
+	case has["decision"]:
+		return "System One decisions only (`POST /v1/systemone`)"
+	case has["embedding"] && !has["completion"]:
+		return "embeddings only (`POST /v1/embeddings`)"
+	}
+	var labels []string
+	for _, c := range []struct{ key, label string }{
+		{"completion", "chat"}, {"vision", "image input"}, {"tools", "tool calling"},
+		{"thinking", "thinking"}, {"insert", "code fill-in"}, {"embedding", "embeddings"},
+	} {
+		if has[c.key] {
+			labels = append(labels, c.label)
+		}
+	}
+	return strings.Join(labels, ", ")
+}
 
 type systemPromptStore struct {
 	mu   sync.Mutex
