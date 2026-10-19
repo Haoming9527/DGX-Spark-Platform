@@ -5,7 +5,6 @@ import { loadOptionalAccount } from "../../../lib/auth/requireAccount";
 import { clearSessionCookie } from "../../../lib/auth/auth";
 import { clientKey, takeRateLimit } from "../../../lib/security/rateLimit";
 import { ApiRequestError, apiFailure, readJsonBody, requireSameOrigin } from "../../../lib/security/apiRequest";
-import { requireHuman } from "../../../lib/security/botCheck";
 import {
   acquireGuestStream, GUEST_BUSY, GUEST_DAILY_REQUESTS, guestStreamRelease, releaseWhenDone, requireGuestDailyAllowance,
 } from "../../../lib/security/guestLimits";
@@ -102,7 +101,6 @@ export async function POST(req: NextRequest) {
   let streaming = false;
   try {
     requireSameOrigin(req);
-    await requireHuman(req);
     const optional = await loadOptionalAccount(req);
     clearCookie = optional.clearCookie;
     if (clearCookie) return reply(NextResponse.json({ error: "Sign in again to continue." }, { status: 401 }), true);

@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { withBotId } from "botid/next/config";
 
 const securityHeaders = [
   { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
@@ -22,4 +21,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withBotId(nextConfig);
+export default nextConfig;

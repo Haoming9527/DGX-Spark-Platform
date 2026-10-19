@@ -5,14 +5,12 @@ import { hashPassword, generateToken, applySessionCookie } from "../../../../lib
 import { loadAccount, publicUser } from "../../../../lib/auth/account";
 import { clientKey, takeRateLimit } from "../../../../lib/security/rateLimit";
 import { apiFailure, readJsonBody, requireSameOrigin } from "../../../../lib/security/apiRequest";
-import { requireHuman } from "../../../../lib/security/botCheck";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: NextRequest) {
   try {
     requireSameOrigin(req);
-    await requireHuman(req);
     if (!await takeRateLimit(`signup:${clientKey(req)}`, { limit: 5, windowMs: 15 * 60 * 1000 })) {
       return NextResponse.json({ error: "Too many attempts. Try again later." }, { status: 429 });
     }

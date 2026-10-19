@@ -14,7 +14,7 @@ export function apiFailure(error: unknown, context: string) {
   return NextResponse.json({ error: "Internal server error. Try again shortly." }, { status: 500 });
 }
 
-// Browser-only routes: reject other sites' pages and cross-site fetches. Scripts can forge these headers; BotID covers them.
+// Browser-only routes: reject other sites' pages and cross-site fetches. Scripts can forge these headers; rate limits cover them.
 export function requireSameOrigin(req: NextRequest) {
   const site = req.headers.get("sec-fetch-site");
   if (req.headers.get("origin") !== req.nextUrl.origin || (site !== null && site !== "same-origin")) {

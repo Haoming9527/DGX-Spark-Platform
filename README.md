@@ -326,7 +326,6 @@ Guests can use every model and feature. These controls keep scripts, embedders, 
 
 | Layer | Control |
 | --- | --- |
-| Bot verification | [Vercel BotID](https://vercel.com/docs/botid) checks every chat, web search, login, and signup request; automated clients get `403`. It runs only on Vercel, and local development always passes. |
 | Embedding | `frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN` stop other sites framing the app. |
 | Same-origin | Chat, search, login, and signup accept only same-origin `application/json` requests. |
 | Guest concurrency | At most 2 streaming replies per guest IP and 4 guest replies across the site, so guests never fill the GPU for signed-in users. Tracked in `guest_streams`; a lease expires after 200 seconds if a function stops. |

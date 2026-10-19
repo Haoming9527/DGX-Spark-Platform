@@ -4,7 +4,6 @@ import { clientKey, takeRateLimit } from "../../../lib/security/rateLimit";
 import { ApiRequestError, apiFailure, readJsonBody, requireSameOrigin } from "../../../lib/security/apiRequest";
 import { unauthorizedResponse } from "../../../lib/auth/auth";
 import { searchWeb } from "../../../lib/search/webSearchProvider";
-import { requireHuman } from "../../../lib/security/botCheck";
 import { GUEST_DAILY_SEARCHES, requireGuestDailyAllowance } from "../../../lib/security/guestLimits";
 
 export const runtime = "nodejs";
@@ -13,7 +12,6 @@ export const maxDuration = 30;
 export async function POST(req: NextRequest) {
   try {
     requireSameOrigin(req);
-    await requireHuman(req);
     const { account, clearCookie } = await loadOptionalAccount(req);
     if (clearCookie) return unauthorizedResponse(true);
     const ip = clientKey(req);
