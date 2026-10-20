@@ -102,7 +102,7 @@ export function ChatInput({
     if (unavailable) recognitionRef.current?.abort();
   }, [unavailable]);
 
-  const showMicNotice = (message: string) => {
+  const showNotice = (message: string) => {
     setMicNotice(message);
     if (micNoticeTimerRef.current) window.clearTimeout(micNoticeTimerRef.current);
     micNoticeTimerRef.current = window.setTimeout(() => {
@@ -179,7 +179,7 @@ export function ChatInput({
 
   const toggleListening = async () => {
     if (!recognitionRef.current) {
-      showMicNotice("Voice isn’t supported in this browser.");
+      showNotice("Voice isn’t supported in this browser.");
       return;
     }
 
@@ -192,7 +192,7 @@ export function ChatInput({
 
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
-        showMicNotice("No microphone available.");
+        showNotice("No microphone available.");
         return;
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -200,7 +200,7 @@ export function ChatInput({
     } catch {
       setIsListening(false);
       setInterimTranscript("");
-      showMicNotice("Allow the mic for this site, then try again.");
+      showNotice("Allow the mic for this site, then try again.");
       return;
     }
 
@@ -213,16 +213,24 @@ export function ChatInput({
       setInterimTranscript("");
       const msg = err instanceof Error ? err.message : String(err);
       if (!/already started/i.test(msg)) {
-        showMicNotice("Allow the mic for this site, then try again.");
+        showNotice("Allow the mic for this site, then try again.");
       }
     }
   };
 
   const addImageFiles = async (files: Iterable<File>) => {
     if (!canSee) return;
-    const candidates = Array.from(files).filter(
-      (file) => file.type.startsWith("image/") && file.size > 0 && file.size <= MAX_IMAGE_BYTES
-    );
+    const all = Array.from(files);
+    const images = all.filter((file) => /^image\/(?:png|jpeg|webp|gif)$/.test(file.type));
+    const candidates = images.filter((file) => file.size > 0 && file.size <= MAX_IMAGE_BYTES);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (all.length > images.length) {
+      showNotice(all.length === 1 ? "That file isn’t an image. Use PNG, JPEG, WebP or GIF." : "Some files weren’t images. Only PNG, JPEG, WebP and GIF work.");
+    } else if (images.length > candidates.length) {
+      showNotice(`Images must be under ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`);
+    } else if (pendingImages.length + candidates.length > MAX_IMAGES) {
+      showNotice(`You can attach up to ${MAX_IMAGES} images.`);
+    }
     if (!candidates.length) return;
 
     const loaded: ChatImage[] = [];
@@ -247,7 +255,6 @@ export function ChatInput({
     }
     if (!loaded.length) return;
     setPendingImages((prev) => [...prev, ...loaded].slice(0, MAX_IMAGES));
-    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const onPaste = (e: React.ClipboardEvent) => {
