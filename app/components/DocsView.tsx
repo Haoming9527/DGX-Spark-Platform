@@ -20,6 +20,8 @@ import {
   Wrench,
 } from "lucide-react";
 
+import { isDecisionModel } from "@/lib/models/modelCapabilities";
+
 const baseUrl = "https://api.dgxspark.dev";
 
 const navGroups = [
@@ -368,6 +370,33 @@ const final = await client.chat.completions.create({
   tools,
 });
 console.log(final.choices[0].message.content);`,
+  REST: `# 1) Send the tool definition. If the reply has message.tool_calls, run the tool yourself.
+curl ${baseUrl}/v1/chat/completions \\
+  -H "Authorization: Bearer dgx_sk_your_key_here" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "qwen3.6:35b-a3b",
+    "messages": [{"role": "user", "content": "Weather in Singapore in celsius?"}],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get the current weather for a city.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "city": {"type": "string"},
+            "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}
+          },
+          "required": ["city"]
+        }
+      }
+    }]
+  }'
+
+# 2) Send the result back: repeat the call with the assistant message (including its tool_calls)
+#    and a role "tool" message appended to "messages".
+#    {"role": "tool", "tool_call_id": "<id from the tool call>", "content": "{\\"temp_c\\": 31}"}`,
 };
 
 const structuredSnippets = {
@@ -422,14 +451,38 @@ const res = await client.chat.completions.create({
   },
 });
 console.log(res.choices[0].message.content);`,
-};
-
-const systemOneSnippets = {
-  clef: `curl ${baseUrl}/v1/systemone \\
+  REST: `curl ${baseUrl}/v1/chat/completions \\
   -H "Authorization: Bearer dgx_sk_your_key_here" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "clef",
+    "model": "qwen3.6:35b-a3b",
+    "messages": [
+      {"role": "user", "content": "Is Paris the capital of France? Return JSON."}
+    ],
+    "response_format": {
+      "type": "json_schema",
+      "json_schema": {
+        "name": "qa",
+        "strict": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "answer": {"type": "string"},
+            "confidence": {"type": "number"}
+          },
+          "required": ["answer", "confidence"]
+        }
+      }
+    }
+  }'`,
+};
+
+const systemOneSnippets = {
+  choice: `curl ${baseUrl}/v1/systemone \\
+  -H "Authorization: Bearer dgx_sk_your_key_here" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "your-decision-model",
     "state": "The export button stopped working after the update.",
     "questions": {
       "team": {
@@ -443,11 +496,11 @@ const systemOneSnippets = {
       }
     }
   }'`,
-  "clef-flash": `curl ${baseUrl}/v1/systemone \\
+  "probability & score": `curl ${baseUrl}/v1/systemone \\
   -H "Authorization: Bearer dgx_sk_your_key_here" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "model": "clef-flash",
+    "model": "your-decision-model",
     "state": {"ticket": "The export button stopped working after the update."},
     "questions": {
       "regression": {
@@ -533,10 +586,11 @@ export function DocsView() {
   const [streamLang, setStreamLang] = useState<GuideLanguage>("Python");
   const [visionLang, setVisionLang] = useState<GuideLanguage>("Python");
   const [embedLang, setEmbedLang] = useState<GuideLanguage>("Python");
-  const [toolsLang, setToolsLang] = useState<"Python" | "JavaScript">("Python");
-  const [structuredLang, setStructuredLang] = useState<"Python" | "JavaScript">("Python");
-  const [decisionModel, setDecisionModel] = useState<keyof typeof systemOneSnippets>("clef");
+  const [toolsLang, setToolsLang] = useState<GuideLanguage>("Python");
+  const [structuredLang, setStructuredLang] = useState<GuideLanguage>("Python");
+  const [decisionModel, setDecisionModel] = useState<keyof typeof systemOneSnippets>("choice");
   const [models, setModels] = useState<string[]>([]);
+  const [decisionModels, setDecisionModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(true);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string>("overview");
@@ -590,6 +644,9 @@ export function DocsView() {
       .then((data) => {
         if (data.models && Array.isArray(data.models)) {
           setModels(data.models.map((m: { name: string }) => m.name));
+          setDecisionModels(data.models
+            .filter((m: { capabilities?: unknown }) => isDecisionModel(m.capabilities))
+            .map((m: { name: string }) => m.name));
         } else if (data.error === "OFFLINE") {
           setModelsError(data.message || "DGX Spark is unreachable.");
         } else {
@@ -698,7 +755,7 @@ export function DocsView() {
               { href: "#vision", label: "Vision", hint: "Image understanding" },
               { href: "#tools", label: "Tools & MCP", hint: "Function calling loop" },
               { href: "#embeddings", label: "Embeddings", hint: "Vectors for RAG" },
-              { href: "#systemone", label: "System One", hint: "Decisions with Clef" },
+              { href: "#systemone", label: "System One", hint: "Typed decisions" },
             ].map((link) => (
               <a
                 key={link.href}
@@ -919,7 +976,7 @@ export function DocsView() {
           id="systemone"
           icon={<ListChecks className="h-5 w-5 text-nvidia-green" />}
           title="System One"
-          description="Clef and Clef Flash make typed decisions from text, JSON, or images. Use Ollama 0.35.1+ and POST /v1/systemone with your personal API key. These models stay in the API model list but are not chat models."
+          description="Decision models make typed decisions from text, JSON, or images. Use Ollama 0.35.1+ and POST /v1/systemone with your personal API key. A model counts as a decision model when it reports the decision capability in GET /v1/models. These models stay in the API model list but are not chat models."
         >
           <GuideSteps
             steps={[
@@ -942,8 +999,38 @@ export function DocsView() {
             ]}
           />
           <div className="mt-4">
+            <p className="mb-2 text-sm font-semibold text-foreground">Decision models available now</p>
+            {loadingModels ? (
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-panel p-3 text-sm text-foreground/50">
+                <span className="h-2 w-2 rounded-full bg-nvidia-green animate-ping" />
+                Loading models from Ollama...
+              </div>
+            ) : modelsError ? (
+              <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-400">{modelsError}</div>
+            ) : decisionModels.length === 0 ? (
+              <div className="rounded-lg border border-border bg-panel p-3 text-sm text-foreground/50">
+                No decision models are available right now.
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {decisionModels.map((modelName) => (
+                  <button
+                    key={modelName}
+                    type="button"
+                    onClick={() => handleCopy(modelName, `decision-${modelName}`)}
+                    title="Copy model name"
+                    className="sticker-sm inline-flex h-8 cursor-pointer items-center gap-1.5 px-3 font-mono text-[12px] text-foreground transition-[filter] hover:brightness-105"
+                  >
+                    {copiedText === `decision-${modelName}` ? <Check className="h-3 w-3 text-nvidia-green" /> : <Copy className="h-3 w-3 text-muted" />}
+                    {modelName}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="mt-4">
             <CodeTabs
-              languages={["clef", "clef-flash"]}
+              languages={["choice", "probability & score"]}
               active={decisionModel}
               onChange={setDecisionModel}
               code={systemOneSnippets[decisionModel]}
@@ -952,7 +1039,8 @@ export function DocsView() {
             />
           </div>
           <Callout>
-            Both models support all three question types. System One does not accept chat messages,
+            Replace <code>your-decision-model</code> with a model that has the decision capability.
+            System One does not accept chat messages,
             streaming, tools, or generation controls. Chat and generation routes return
             {" "}<code>model_endpoint_mismatch</code> for decision models. See the{" "}
             <a className="underline underline-offset-2" href="https://docs.ollama.com/api/systemone" target="_blank" rel="noreferrer">
@@ -985,7 +1073,7 @@ export function DocsView() {
           />
           <div className="mt-4">
             <CodeTabs
-              languages={["Python", "JavaScript"]}
+              languages={["Python", "JavaScript", "REST"]}
               active={toolsLang}
               onChange={setToolsLang}
               code={toolsSnippets[toolsLang]}
@@ -1018,7 +1106,7 @@ export function DocsView() {
           />
           <div className="mt-4">
             <CodeTabs
-              languages={["Python", "JavaScript"]}
+              languages={["Python", "JavaScript", "REST"]}
               active={structuredLang}
               onChange={setStructuredLang}
               code={structuredSnippets[structuredLang]}

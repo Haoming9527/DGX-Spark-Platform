@@ -272,7 +272,7 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
       if (data.models && Array.isArray(data.models)) {
         const loadedModels: ModelItem[] = data.models
           .filter((m: { name: string; capabilities?: unknown }) =>
-            !m.name.toLowerCase().includes("embed") && !isDecisionModel(m.name, m.capabilities))
+            !m.name.toLowerCase().includes("embed") && !isDecisionModel(m.capabilities))
           .map((m: { name: string; capabilities?: unknown; thinking?: unknown; details?: { parameter_size?: string } }) => {
             const caps = Array.isArray(m.capabilities)
               ? m.capabilities.map((c) => String(c).toLowerCase())

@@ -39,7 +39,7 @@ A separate Linux server hosts the gateway so power controls remain reachable whe
 - **Search the web** — tool-capable models call search when they decide it's needed; **+ → Search** searches before every answer (also for models without tool support). [LangSearch](https://langsearch.com) returns source text and citations. Set `LANGSEARCH_KEY` on the server, including in Vercel. Source text is capped to keep context bounded.
 - **Connect MCP tools** — add your own servers, choose authentication, and approve each tool call in web chat.
 - **Use your own clients** — an OpenAI-compatible API with personal `dgx_sk_*` keys, key management, and usage reporting.
-- **Make typed decisions** — Clef and Clef Flash classify, estimate probabilities, and score through `/v1/systemone`, separate from chat.
+- **Make typed decisions** — decision models classify, estimate probabilities, and score through `/v1/systemone`, separate from chat.
 - **Manage access** — invite-gated signup, session authentication, user administration, and model restrictions.
 - **Monitor infrastructure** — live power, voltage, current, and energy readings from Athom/Tasmota plugs.
 - **Control the Spark** — power on remotely or request a graceful SSH shutdown followed by guarded plug cutoff.
@@ -379,7 +379,7 @@ Chat image inputs accept base64/data URLs and direct public HTTP(S) image URLs o
 
 ### System One
 
-Use `POST /v1/systemone` with your personal API key, `model: "clef"` or `"clef-flash"`, `state`, and named `questions` of type `choice`, `noul`, or `score`. Requires Ollama 0.35.1+. Responses contain typed answers, probabilities, and token usage; these models are excluded from chat. See `/documentation#systemone` for authenticated cURL examples and the [Ollama contract](https://docs.ollama.com/api/systemone).
+Use `POST /v1/systemone` with your personal API key, `model` set to a model with the `decision` capability, `state`, and named `questions` of type `choice`, `noul`, or `score`. Requires Ollama 0.35.1+. Responses contain typed answers, probabilities, and token usage; these models are excluded from chat. See `/documentation#systemone` for authenticated cURL examples and the [Ollama contract](https://docs.ollama.com/api/systemone).
 
 System One accepts optional raw base64 PNG/JPEG/WebP images, not URLs. Requests are limited to 64 KiB without images or 32 MiB with images, including JSON and base64. It does not stream. The supplied Olla profile preserves v0.0.28 defaults and adds this endpoint; deploy both Compose services when updating.
 

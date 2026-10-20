@@ -31,19 +31,13 @@ func requestLimitMessage(limit int64) string {
 	}
 }
 
-func decisionModel(name string, caps []string) bool {
+func decisionModel(_ string, caps []string) bool {
 	for _, capability := range caps {
 		if strings.EqualFold(strings.TrimSpace(capability), "decision") {
 			return true
 		}
 	}
-	if len(caps) != 0 {
-		return false
-	}
-	name = strings.ToLower(strings.TrimSpace(name))
-	name = name[strings.LastIndex(name, "/")+1:]
-	name, _, _ = strings.Cut(name, ":")
-	return name == "clef" || name == "clef-flash"
+	return false
 }
 
 func decisionModelForRequest(ctx context.Context, ollaBase *url.URL, name string, models []map[string]any) bool {
