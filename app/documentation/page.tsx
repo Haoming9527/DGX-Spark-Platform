@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Key } from "lucide-react";
-import { DocsView } from "../components/DocsView";
+import { DocsView } from "../components/docs/DocsView";
 import { LogoMark } from "../components/ui/LogoMark";
 import { ThemeToggle } from "../components/ui/ThemeToggle";
 
