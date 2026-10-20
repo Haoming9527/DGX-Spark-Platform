@@ -51,6 +51,7 @@ type ChatRequestBody = {
 
 const EXPECTED_CODES = new Set(["SLEEPING", "OFFLINE", "MODEL_UNAVAILABLE", "MODEL_CAPABILITY", "GUEST_BUSY", "GUEST_DAILY_LIMIT", "CONTEXT_BUDGET"]);
 const ERROR_ID = "chat-error";
+const PENDING_ID = "chat-pending";
 
 // Turns JSON error responses (rate limits, validation, guest limits) into errors that keep their status and code.
 async function chatFetch(input: RequestInfo | URL, init?: RequestInit) {
@@ -173,6 +174,8 @@ export function ChatInterface({ initialUser = null, authRequested = false, authR
       toViewMessage(message, isLoading && message.role === "assistant" && messages.indexOf(message) === lastIndex, local[message.id]));
     if (requestError && !isLoading && views.at(-1)?.role === "user") {
       views.push({ id: ERROR_ID, role: "assistant", content: requestError, responseStatus: "error" });
+    } else if (isLoading && views.at(-1)?.role === "user") {
+      views.push({ id: PENDING_ID, role: "assistant", content: "", responseStatus: "running", responseStartedAt: requestStartRef.current || undefined });
     }
     return views;
   }, [messages, isLoading, local, requestError]);
