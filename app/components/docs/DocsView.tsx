@@ -29,7 +29,7 @@ export function DocsView() {
   };
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)] lg:overflow-y-auto">
         <nav className="space-y-1 rounded-lg border border-border bg-panel p-2" aria-label="Documentation">
           {navGroups.map((group) => (

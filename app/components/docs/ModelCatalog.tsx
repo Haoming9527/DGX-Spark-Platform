@@ -27,7 +27,7 @@ function ModelCard({ model }: { model: DocModel }) {
   const { copied, copy } = useCopy();
   const endpoint = model.capabilities.map((capability) => capabilityInfo(capability).endpoint).find(Boolean);
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-panel p-4">
+    <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-panel p-4">
       <div className="flex items-start gap-2">
         <button type="button" onClick={() => copy(model.name, "model")} title="Copy model name"
           className="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
@@ -41,7 +41,7 @@ function ModelCard({ model }: { model: DocModel }) {
           ? sortCapabilities(model.capabilities).map((capability) => <CapabilityBadge key={capability} capability={capability} />)
           : <span className="text-xs text-foreground/45">No capabilities reported</span>}
       </div>
-      {endpoint && <div className="font-mono text-[11px] text-foreground/45">{endpoint}</div>}
+      {endpoint && <div className="wrap-anywhere font-mono text-[11px] text-foreground/45">{endpoint}</div>}
     </div>
   );
 }
@@ -87,7 +87,7 @@ export function ModelCatalog({ models, loading, error, only, filters = true }: {
         </div>
       )}
       {visible.length ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {visible.map((model) => <ModelCard key={model.name} model={model} />)}
         </div>
       ) : (
