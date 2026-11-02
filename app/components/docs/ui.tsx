@@ -60,7 +60,7 @@ export function Callout({ children, tone = "note" }: { children: React.ReactNode
 }
 
 export function Code({ children }: { children: React.ReactNode }) {
-  return <code className="rounded bg-panel-hover px-1.5 py-0.5 font-mono text-[0.85em] text-foreground">{children}</code>;
+  return <code className="box-decoration-clone rounded bg-panel-hover px-1.5 py-0.5 font-mono text-[0.85em] whitespace-normal wrap-anywhere text-foreground">{children}</code>;
 }
 
 function CopyButton({ text, label, className = "" }: { text: string; label: string; className?: string }) {
